@@ -500,7 +500,8 @@ export function predictExpeditionOutcome(
  */
 export function runExpeditionSimulation(
   region: ExpeditionRegion,
-  golem: Golem
+  golem: Golem,
+  random: () => number = Math.random
 ): ExpeditionReport {
   const logs: ExpeditionLogEvent[] = [];
   let totalDamage = 0;
@@ -671,7 +672,7 @@ export function runExpeditionSimulation(
   const pool = [...region.possibleLoot];
   for (let s = 0; s < lootSlotCount; s++) {
     if (pool.length === 0) break;
-    const randomIndex = Math.floor(Math.random() * pool.length);
+    const randomIndex = Math.floor(random() * pool.length);
     const item = pool[randomIndex];
 
     let dropChance = 0.8; // common
@@ -680,8 +681,8 @@ export function runExpeditionSimulation(
 
     if (hasManaSense) dropChance += 0.2;
 
-    if (Math.random() < dropChance) {
-      const baseCount = Math.floor(item.amountMin + Math.random() * (item.amountMax - item.amountMin + 1));
+    if (random() < dropChance) {
+      const baseCount = Math.floor(item.amountMin + random() * (item.amountMax - item.amountMin + 1));
       const finalCount = Math.max(1, baseCount + (workQuantityBonus - 1));
 
       selectedLoots.push({

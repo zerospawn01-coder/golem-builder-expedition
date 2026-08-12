@@ -34,3 +34,19 @@ Release baseline: `v2.0.0`
    `npm run dev`
 
 No API key is required.
+
+## 再現可能なロジック・プレイテスト
+
+UIを操作せず、`v2.0.0` のルールを固定seedで繰り返す観測専用ハーネスを実行できます。ゲーム本体の素材数やバランス値は変更しません。
+
+```bash
+npm run playtest -- --runs=30 --seed=20260812 --max-days=30
+```
+
+機械処理用のrun別データは `--json` で出力します。
+
+```bash
+npm run playtest -- --runs=30 --seed=20260812 --max-days=30 --json
+```
+
+記録対象は古代遺跡到達DAY、行動内訳、機体使用回数、部品選択回数、素材の発見・回収・廃棄数、中破後の判断、最終3体構成です。同じ引数なら同じ結果になります。

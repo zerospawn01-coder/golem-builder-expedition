@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "playtest": "tsx scripts/playtest.ts",
+    "audit:rules": "tsx scripts/audit-rules.ts",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
   },

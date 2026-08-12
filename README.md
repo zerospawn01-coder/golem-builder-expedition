@@ -43,6 +43,20 @@ UIを操作せず、`v2.0.0` のルールを固定seedで繰り返す観測専�
 npm run playtest -- --runs=30 --seed=20260812 --max-days=30
 ```
 
+bot固有の癖とゲーム側の傾向を分離するため、6種類の方針を比較できます。
+
+```bash
+npm run playtest -- --runs=30 --seed=20260812 --max-days=30 --policy=all
+```
+
+利用可能な方針は `PROGRESSION_GREEDY`、`SURVIVAL_FIRST`、`WORK_MAX`、`REPAIR_FIRST`、`SCRAP_FIRST`、`RANDOM_LEGAL` です。
+
+各runの乱数状態が独立し、実行順を逆転しても結果が一致することは次で監査できます。
+
+```bash
+npm run playtest -- --runs=10 --seed=20260812 --max-days=30 --policy=all --verify-determinism
+```
+
 機械処理用のrun別データは `--json` で出力します。
 
 ```bash
@@ -53,7 +67,7 @@ npm run playtest -- --runs=30 --seed=20260812 --max-days=30 --json
 
 ### ルール空間の静的監査
 
-全64構成を全地域に照合し、攻略可能構成数、進行チェーン、入手不能部品、死に部品候補、復帰不能リスクを検査します。
+全64構成を全地域に照合し、SAFE／DAMAGED／PARTIAL／FAILED分布、攻略可能構成数、進行チェーン、入手不能部品、死に部品候補を検査します。さらに合法操作を最大60手まで探索し、到達可能なsoftlockと再現手順を探します。
 
 ```bash
 npm run audit:rules

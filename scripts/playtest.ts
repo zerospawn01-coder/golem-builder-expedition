@@ -21,6 +21,7 @@ const MAX_GOLEMS = 3;
 
 type ActionName = 'build' | 'repair' | 'expedition' | 'disassemble';
 type PartKey = `${MaterialCategory}:${string}`;
+type PolicyName = 'PROGRESSION_GREEDY' | 'SURVIVAL_FIRST' | 'WORK_MAX' | 'REPAIR_FIRST' | 'SCRAP_FIRST' | 'RANDOM_LEGAL';
 
 interface MaterialFlow {
   found: number;
@@ -31,6 +32,7 @@ interface MaterialFlow {
 interface RunMetrics {
   runId: number;
   seed: number;
+  policy: PolicyName;
   ruinsReachedDay: number | null;
   stoppedDay: number;
   stopReason: 'ruins_reached' | 'day_limit' | 'no_legal_action';
@@ -142,11 +144,24 @@ function build(state: SimulationState, body: BodyType, core: CoreType, rune: Run
 
 function repair(state: SimulationState, golem: Golem): boolean {
   if (state.actionsLeft <= 0 || golem.durability >= 100 || state.inventory.body[golem.body] <= 0) return false;
+  const wasDamaged = golem.durability < 55;
   state.inventory.body[golem.body] -= 1;
   golem.durability = Math.min(100, golem.durability + 25);
   state.actionsLeft -= 1;
   state.metrics.actions.repair += 1;
-  if (golem.durability <= 75) state.metrics.damagedDecisions.repairs += 1;
+  if (wasDamaged) state.metrics.damagedDecisions.repairs += 1;
+  return true;
+}
+
+function disassemble(state: SimulationState, golem: Golem): boolean {
+  if (golem.isStarter) return false;
+  const index = state.golems.indexOf(golem);
+  if (index < 0) return false;
+  state.inventory.body[golem.body] += 1;
+  state.inventory.core[golem.core] += 1;
+  state.golems.splice(index, 1);
+  state.metrics.actions.disassemble += 1;
+  if (golem.durability < 55) state.metrics.damagedDecisions.disassembles += 1;
   return true;
 }
 
@@ -164,6 +179,8 @@ function lootPriority(category: MaterialCategory, id: string): number {
 function chooseCargo<T extends { category: MaterialCategory; id: string; count: number; weight: number }>(
   loots: T[],
   capacity: number,
+  policy: PolicyName,
+  random: () => number,
 ): Set<number> {
   let bestValue = -1;
   let bestWeight = -1;
@@ -175,7 +192,10 @@ function chooseCargo<T extends { category: MaterialCategory; id: string; count: 
     for (let index = 0; index < loots.length; index += 1) {
       if ((mask & (1 << index)) === 0) continue;
       weight += loots[index].weight;
-      value += lootPriority(loots[index].category, loots[index].id) * loots[index].count;
+      const baseValue = policy === 'WORK_MAX'
+        ? loots[index].count * 20
+        : lootPriority(loots[index].category, loots[index].id) * loots[index].count;
+      value += policy === 'RANDOM_LEGAL' ? random() * 100 : baseValue;
       selected.add(index);
     }
     if (weight <= capacity && (value > bestValue || (value === bestValue && weight > bestWeight))) {
@@ -205,7 +225,7 @@ function expedition(state: SimulationState, golem: Golem, regionId: string, rand
   increment(state.metrics.golemUsage, `${golem.body}/${golem.core}/${golem.rune}`);
 
   for (const loot of report.loots) recordMaterial(state.metrics, loot.category, loot.id, 'found', loot.count);
-  const selected = chooseCargo(report.loots, golem.stats.work * 2);
+  const selected = chooseCargo(report.loots, golem.stats.work * 2, state.metrics.policy, random);
   report.loots.forEach((loot, index) => {
     if (selected.has(index)) {
       addLoot(state, loot.category, loot.id, loot.count);
@@ -221,7 +241,26 @@ function expedition(state: SimulationState, golem: Golem, regionId: string, rand
   return true;
 }
 
-function chooseBuild(state: SimulationState): [BodyType, CoreType, RuneType] | null {
+function craftableBuilds(state: SimulationState): Array<[BodyType, CoreType, RuneType]> {
+  const choices: Array<[BodyType, CoreType, RuneType]> = [];
+  for (const body of Object.keys(BODIES) as BodyType[]) {
+    for (const core of ['fire', 'water', 'wind', 'earth'] as CoreType[]) {
+      for (const rune of ['attack', 'defense', 'speed', 'regen'] as RuneType[]) {
+        if (hasMaterials(state, body, core, rune)) choices.push([body, core, rune]);
+      }
+    }
+  }
+  return choices;
+}
+
+function chooseBuild(state: SimulationState, policy: PolicyName, random: () => number): [BodyType, CoreType, RuneType] | null {
+  if (policy === 'WORK_MAX') {
+    return craftableBuilds(state).sort((a, b) => calculateGolemStats(...b).work - calculateGolemStats(...a).work)[0] ?? null;
+  }
+  if (policy === 'RANDOM_LEGAL') {
+    const choices = craftableBuilds(state);
+    return choices.length > 0 && random() < 0.35 ? choices[Math.floor(random() * choices.length)] : null;
+  }
   const hasNightVision = state.golems.some((golem) => golem.traits.includes('night_vision'));
   if (!hasNightVision && hasMaterials(state, 'wood', 'fire', 'attack')) return ['wood', 'fire', 'attack'];
 
@@ -235,7 +274,20 @@ function chooseBuild(state: SimulationState): [BodyType, CoreType, RuneType] | n
   return null;
 }
 
-function chooseExpedition(state: SimulationState): { golem: Golem; regionId: string } | null {
+function chooseExpedition(state: SimulationState, policy: PolicyName, random: () => number): { golem: Golem; regionId: string } | null {
+  if (policy === 'RANDOM_LEGAL') {
+    const choices = state.golems.flatMap((golem) => EXPEDITION_REGIONS
+      .filter((region) => golem.durability > 0 && (!region.accessTrait || golem.traits.includes(region.accessTrait)))
+      .map((region) => ({ golem, regionId: region.id })));
+    return choices.length > 0 ? choices[Math.floor(random() * choices.length)] : null;
+  }
+  if (policy === 'WORK_MAX') {
+    const golem = [...state.golems].filter((candidate) => candidate.durability > 0).sort((a, b) => b.stats.work - a.stats.work)[0];
+    if (golem) {
+      const regionId = golem.traits.includes('mana_sense') ? 'region_ruins' : golem.traits.includes('night_vision') ? 'region_mine' : 'region_quarry';
+      return { golem, regionId };
+    }
+  }
   const manaGolem = state.golems.find((golem) => golem.traits.includes('mana_sense'));
   if (manaGolem) return { golem: manaGolem, regionId: 'region_ruins' };
 
@@ -246,11 +298,12 @@ function chooseExpedition(state: SimulationState): { golem: Golem; regionId: str
   return starter ? { golem: starter, regionId: 'region_quarry' } : null;
 }
 
-function simulateRun(runId: number, seed: number, maxDays: number): RunMetrics {
+function simulateRun(runId: number, seed: number, maxDays: number, policy: PolicyName): RunMetrics {
   const random = mulberry32(seed);
   const metrics: RunMetrics = {
     runId,
     seed,
+    policy,
     ruinsReachedDay: null,
     stoppedDay: 1,
     stopReason: 'day_limit',
@@ -276,15 +329,26 @@ function simulateRun(runId: number, seed: number, maxDays: number): RunMetrics {
       continue;
     }
 
-    const buildChoice = chooseBuild(state);
+    if (policy === 'REPAIR_FIRST' || policy === 'SURVIVAL_FIRST') {
+      const threshold = policy === 'REPAIR_FIRST' ? 100 : 75;
+      const damaged = state.golems.find((golem) => golem.durability < threshold && state.inventory.body[golem.body] > 0);
+      if (damaged && repair(state, damaged)) continue;
+    }
+    if (policy === 'SCRAP_FIRST') {
+      const scrap = state.golems.find((golem) => !golem.isStarter && golem.durability < 55);
+      if (scrap && disassemble(state, scrap)) continue;
+    }
+
+    const buildChoice = chooseBuild(state, policy, random);
     if (buildChoice && build(state, ...buildChoice)) continue;
 
-    const target = chooseExpedition(state);
+    const target = chooseExpedition(state, policy, random);
     if (!target) {
       metrics.stopReason = 'no_legal_action';
       break;
     }
-    if (target.golem.durability < 40 && repair(state, target.golem)) continue;
+    const repairThreshold = policy === 'SURVIVAL_FIRST' ? 75 : policy === 'REPAIR_FIRST' ? 100 : policy === 'SCRAP_FIRST' ? 0 : 40;
+    if (target.golem.durability < repairThreshold && repair(state, target.golem)) continue;
     if (!expedition(state, target.golem, target.regionId, random)) {
       metrics.stopReason = 'no_legal_action';
       break;
@@ -339,13 +403,14 @@ function aggregate(runs: RunMetrics[]) {
 
 function printReport(runs: RunMetrics[]): void {
   const summary = aggregate(runs);
-  console.log(`GOLEM BUILDER v2.0.0 LOGIC PLAYTEST — ${runs.length} runs`);
+  console.log(`GOLEM BUILDER v2.0.0 LOGIC PLAYTEST — ${runs.length} runs — ${runs[0]?.policy ?? 'UNKNOWN'}`);
   console.log(`Ancient Ruins reached: ${summary.reached.length}/${runs.length} (${percentage(summary.reached.length, runs.length)})`);
   if (summary.reached.length > 0) {
     const days = summary.reached.map((run) => run.ruinsReachedDay as number);
     console.log(`Reach day: min ${Math.min(...days)} / avg ${(days.reduce((a, b) => a + b, 0) / days.length).toFixed(2)} / max ${Math.max(...days)}`);
   }
   console.log(`Actions: build ${summary.actionTotals.build} (${percentage(summary.actionTotals.build, summary.totalActions)}), repair ${summary.actionTotals.repair} (${percentage(summary.actionTotals.repair, summary.totalActions)}), expedition ${summary.actionTotals.expedition} (${percentage(summary.actionTotals.expedition, summary.totalActions)})`);
+  console.log(`Zero-action disassembles: ${summary.actionTotals.disassemble}`);
   console.log('\nPart selections:');
   Object.entries(summary.partTotals).sort((a, b) => b[1] - a[1]).forEach(([key, value]) => console.log(`  ${key}: ${value}`));
   console.log('\nGolem usage:');
@@ -357,10 +422,28 @@ function printReport(runs: RunMetrics[]): void {
 const runsCount = parseNumberFlag('runs', 30);
 const baseSeed = parseNumberFlag('seed', 20260812);
 const maxDays = parseNumberFlag('max-days', 30);
-const runs = Array.from({ length: runsCount }, (_, index) => simulateRun(index + 1, baseSeed + index, maxDays));
+const policies: PolicyName[] = ['PROGRESSION_GREEDY', 'SURVIVAL_FIRST', 'WORK_MAX', 'REPAIR_FIRST', 'SCRAP_FIRST', 'RANDOM_LEGAL'];
+const policyFlag = process.argv.find((argument) => argument.startsWith('--policy='))?.split('=')[1] ?? 'PROGRESSION_GREEDY';
+if (policyFlag !== 'all' && !policies.includes(policyFlag as PolicyName)) throw new Error(`Unknown policy: ${policyFlag}`);
+const selectedPolicies = policyFlag === 'all' ? policies : [policyFlag as PolicyName];
+const runs = selectedPolicies.flatMap((policy) => Array.from({ length: runsCount }, (_, index) => simulateRun(index + 1, baseSeed + index, maxDays, policy)));
+
+if (process.argv.includes('--verify-determinism')) {
+  const forward = selectedPolicies.flatMap((policy) => Array.from({ length: runsCount }, (_, index) => simulateRun(index + 1, baseSeed + index, maxDays, policy)));
+  const reverse = [...selectedPolicies].reverse().flatMap((policy) => Array.from({ length: runsCount }, (_, reverseIndex) => {
+    const index = runsCount - reverseIndex - 1;
+    return simulateRun(index + 1, baseSeed + index, maxDays, policy);
+  })).sort((a, b) => `${a.policy}:${a.runId}`.localeCompare(`${b.policy}:${b.runId}`));
+  const normalizedForward = [...forward].sort((a, b) => `${a.policy}:${a.runId}`.localeCompare(`${b.policy}:${b.runId}`));
+  if (JSON.stringify(normalizedForward) !== JSON.stringify(reverse)) throw new Error('Determinism verification failed: run order changed results');
+  console.error(`Determinism verification: PASS (${forward.length} isolated runs, forward/reverse order identical)`);
+}
 
 if (process.argv.includes('--json')) {
-  console.log(JSON.stringify({ config: { runs: runsCount, baseSeed, maxDays }, runs }, null, 2));
+  console.log(JSON.stringify({ config: { runsPerPolicy: runsCount, baseSeed, maxDays, policies: selectedPolicies }, runs }, null, 2));
 } else {
-  printReport(runs);
+  for (const policy of selectedPolicies) {
+    printReport(runs.filter((run) => run.policy === policy));
+    if (selectedPolicies.length > 1) console.log('');
+  }
 }

@@ -26,6 +26,26 @@ interface BuildAudit {
   status: string;
 }
 
+type DamageBand = 'SAFE' | 'DAMAGED' | 'PARTIAL' | 'FAILED';
+
+interface SearchGolem {
+  body: BodyType;
+  core: CoreType;
+  rune: RuneType;
+  durability: number;
+  starter: boolean;
+}
+
+interface SearchState {
+  inventory: {
+    body: Record<BodyType, number>;
+    core: Record<CoreType, number>;
+    rune: Record<RuneType, number>;
+  };
+  golems: SearchGolem[];
+  path: string[];
+}
+
 function key(category: MaterialCategory, id: string): PartKey {
   return `${category}:${id}`;
 }
@@ -68,6 +88,139 @@ function auditRegion(region: ExpeditionRegion): BuildAudit[] {
       status: report.status,
     };
   });
+}
+
+function damageBand(result: BuildAudit): DamageBand {
+  if (!result.survives) return 'FAILED';
+  if (result.damage < 25) return 'SAFE';
+  if (result.damage < 55) return 'DAMAGED';
+  return 'PARTIAL';
+}
+
+function cloneSearchState(state: SearchState): SearchState {
+  return {
+    inventory: {
+      body: { ...state.inventory.body },
+      core: { ...state.inventory.core },
+      rune: { ...state.inventory.rune },
+    },
+    golems: state.golems.map((golem) => ({ ...golem })),
+    path: [...state.path],
+  };
+}
+
+function searchKey(state: SearchState): string {
+  const inventory = [
+    ...Object.values(state.inventory.body),
+    ...Object.values(state.inventory.core),
+    ...Object.values(state.inventory.rune),
+  ].join(',');
+  const golems = [...state.golems]
+    .sort((a, b) => `${a.starter}-${a.body}-${a.core}-${a.rune}-${a.durability}`.localeCompare(`${b.starter}-${b.body}-${b.core}-${b.rune}-${b.durability}`))
+    .map((golem) => `${golem.starter ? 1 : 0}:${golem.body}:${golem.core}:${golem.rune}:${golem.durability}`)
+    .join('|');
+  return `${inventory}#${golems}`;
+}
+
+function isSoftlocked(state: SearchState): boolean {
+  if (state.golems.some((golem) => !golem.starter)) return false;
+  if (state.golems.some((golem) => golem.durability > 0)) return false;
+  if (state.golems.some((golem) => state.inventory.body[golem.body] > 0)) return false;
+  for (const body of Object.keys(BODIES) as BodyType[]) {
+    for (const core of Object.keys(CORES) as CoreType[]) {
+      for (const rune of Object.keys(RUNES) as RuneType[]) {
+        if (state.inventory.body[body] > 0 && state.inventory.core[core] > 0 && state.inventory.rune[rune] > 0) return false;
+      }
+    }
+  }
+  return true;
+}
+
+function expandSearchState(state: SearchState): SearchState[] {
+  const next: SearchState[] = [];
+  state.golems.forEach((golem, index) => {
+    if (golem.durability < 100 && state.inventory.body[golem.body] > 0) {
+      const candidate = cloneSearchState(state);
+      candidate.inventory.body[golem.body] -= 1;
+      candidate.golems[index].durability = Math.min(100, candidate.golems[index].durability + 25);
+      candidate.path.push(`repair ${index}:${golem.body}`);
+      next.push(candidate);
+    }
+    if (golem.durability > 0) {
+      const full = createGolem(golem.body, golem.core, golem.rune);
+      full.durability = golem.durability;
+      for (const region of EXPEDITION_REGIONS) {
+        if (region.accessTrait && !full.traits.includes(region.accessTrait)) continue;
+        const report = runExpeditionSimulation(region, full, () => 0);
+        const candidate = cloneSearchState(state);
+        candidate.golems[index].durability = Math.max(0, golem.durability - report.totalDamage);
+        candidate.path.push(`expedition ${index}:${region.id} damage=${report.totalDamage} discard=all`);
+        next.push(candidate);
+      }
+    }
+    if (!golem.starter) {
+      const candidate = cloneSearchState(state);
+      candidate.inventory.body[golem.body] += 1;
+      candidate.inventory.core[golem.core] += 1;
+      candidate.golems.splice(index, 1);
+      candidate.path.push(`disassemble ${index}:${golem.body}/${golem.core}/${golem.rune}`);
+      next.push(candidate);
+    }
+  });
+  if (state.golems.length < 3) {
+    for (const body of Object.keys(BODIES) as BodyType[]) {
+      for (const core of Object.keys(CORES) as CoreType[]) {
+        for (const rune of Object.keys(RUNES) as RuneType[]) {
+          if (state.inventory.body[body] <= 0 || state.inventory.core[core] <= 0 || state.inventory.rune[rune] <= 0) continue;
+          const candidate = cloneSearchState(state);
+          candidate.inventory.body[body] -= 1;
+          candidate.inventory.core[core] -= 1;
+          candidate.inventory.rune[rune] -= 1;
+          candidate.golems.push({ body, core, rune, durability: 100, starter: false });
+          candidate.path.push(`build ${body}/${core}/${rune}`);
+          next.push(candidate);
+        }
+      }
+    }
+  }
+  return next;
+}
+
+function softlockScore(state: SearchState): number {
+  const durability = state.golems.reduce((sum, golem) => sum + golem.durability, 0);
+  const repairStock = state.golems.reduce((sum, golem) => sum + state.inventory.body[golem.body], 0);
+  return durability + repairStock * 30 + state.golems.filter((golem) => !golem.starter).length * 120;
+}
+
+function boundedSoftlockSearch(maxDepth = 60, beamWidth = 4000) {
+  const initial: SearchState = {
+    inventory: {
+      body: { ...DEFAULT_INVENTORY.body },
+      core: { ...DEFAULT_INVENTORY.core },
+      rune: { ...DEFAULT_INVENTORY.rune },
+    },
+    golems: [{ body: 'stone', core: 'wind', rune: 'defense', durability: 100, starter: true }],
+    path: [],
+  };
+  let frontier = [initial];
+  const visited = new Set([searchKey(initial)]);
+  for (let depth = 0; depth <= maxDepth; depth += 1) {
+    const found = frontier.find(isSoftlocked);
+    if (found) return { status: 'REACHABLE_SOFTLOCK', depth, visitedStates: visited.size, witness: found.path };
+    const candidates: SearchState[] = [];
+    for (const state of frontier) {
+      for (const candidate of expandSearchState(state)) {
+        const serialized = searchKey(candidate);
+        if (visited.has(serialized)) continue;
+        visited.add(serialized);
+        candidates.push(candidate);
+      }
+    }
+    candidates.sort((a, b) => softlockScore(a) - softlockScore(b));
+    frontier = candidates.slice(0, beamWidth);
+    if (frontier.length === 0) break;
+  }
+  return { status: 'NOT_FOUND_WITHIN_BOUND', depth: maxDepth, visitedStates: visited.size, witness: [] as string[] };
 }
 
 function initialParts(): Set<PartKey> {
@@ -140,13 +293,16 @@ for (const results of regionAudits.values()) {
 const regions = EXPEDITION_REGIONS.map((region) => {
   const results = regionAudits.get(region.id) ?? [];
   const feasible = results.filter((result) => result.survives);
+  const bands: Record<DamageBand, number> = { SAFE: 0, DAMAGED: 0, PARTIAL: 0, FAILED: 0 };
+  results.forEach((result) => { bands[damageBand(result)] += 1; });
   return {
     id: region.id,
     name: region.name,
     totalBuilds: results.length,
     accessBuilds: results.filter((result) => result.access).length,
     feasibleBuilds: feasible.length,
-    classification: feasible.length === 0 ? 'BROKEN' : feasible.length === 1 ? 'FIXED_SOLUTION' : feasible.length >= results.length * 0.8 ? 'TRIVIAL' : 'CHOICE_EXISTS',
+    damageBands: bands,
+    classification: feasible.length === 0 ? 'BROKEN' : feasible.length === 1 ? 'FIXED_SOLUTION' : bands.SAFE >= results.length * 0.8 ? 'TRIVIAL' : 'CHOICE_EXISTS',
     feasible,
   };
 });
@@ -154,12 +310,7 @@ const regions = EXPEDITION_REGIONS.map((region) => {
 const unreachableRegions = EXPEDITION_REGIONS.filter((region) => !progression.reachableRegions.has(region.id)).map((region) => region.id);
 const unobtainableParts = allPartKeys().filter((part) => !progression.parts.has(part));
 const deadPartCandidates = allPartKeys().filter((part) => !feasiblePartUsage.has(part));
-const recoveryRisks = [{
-  id: 'all_golems_disabled_without_matching_body_material',
-  possible: true,
-  reason: '修理には対象BODY素材が必要。全機体が派遣不能かつ対応BODY在庫0の状態では、素材獲得行動を開始できない。',
-  classification: 'POTENTIAL_SOFTLOCK',
-}];
+const softlockSearch = boundedSoftlockSearch();
 
 const output = {
   version: '2.0.0',
@@ -174,7 +325,7 @@ const output = {
     hasProgressionDeadlock: unreachableRegions.length > 0,
   },
   deadPartCandidates,
-  recoveryRisks,
+  softlockSearch,
 };
 
 if (process.argv.includes('--json')) {
@@ -183,6 +334,7 @@ if (process.argv.includes('--json')) {
   console.log(`GOLEM BUILDER v2.0.0 RULE AUDIT — ${allBuilds.length} legal builds`);
   for (const region of regions) {
     console.log(`${region.name}: feasible ${region.feasibleBuilds}/${region.totalBuilds}, access ${region.accessBuilds}/${region.totalBuilds} [${region.classification}]`);
+    console.log(`  SAFE ${region.damageBands.SAFE} / DAMAGED ${region.damageBands.DAMAGED} / PARTIAL ${region.damageBands.PARTIAL} / FAILED ${region.damageBands.FAILED}`);
     if (region.feasibleBuilds > 0 && region.feasibleBuilds <= 5) {
       for (const build of region.feasible) console.log(`  ${build.key}: damage ${build.damage}, traits ${build.traits.join(',') || '-'}`);
     }
@@ -191,9 +343,10 @@ if (process.argv.includes('--json')) {
   console.log(`Progression blocked: ${unreachableRegions.join(', ') || 'none'}`);
   console.log(`Unobtainable parts: ${unobtainableParts.join(', ') || 'none'}`);
   console.log(`Dead part candidates: ${deadPartCandidates.join(', ') || 'none'}`);
-  for (const risk of recoveryRisks) console.log(`Recovery risk: ${risk.classification} — ${risk.reason}`);
+  console.log(`Softlock search: ${softlockSearch.status}, depth ${softlockSearch.depth}, visited ${softlockSearch.visitedStates}`);
+  if (softlockSearch.witness.length > 0) console.log(`Softlock witness: ${softlockSearch.witness.join(' -> ')}`);
 }
 
-if (regions.some((region) => region.classification === 'BROKEN') || unreachableRegions.length > 0) {
+if (regions.some((region) => region.classification === 'BROKEN') || unreachableRegions.length > 0 || softlockSearch.status === 'REACHABLE_SOFTLOCK') {
   process.exitCode = 2;
 }

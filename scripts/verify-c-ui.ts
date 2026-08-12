@@ -5,10 +5,12 @@ import type { BodyType, Golem } from '../src/types';
 const region = EXPEDITION_REGIONS.find((candidate) => candidate.id === 'region_ruins');
 if (!region) throw new Error('Ancient Ruins not found');
 
-const expected: Record<BodyType, number> = { stone: 53, wood: 47, iron: 59, clay: 52 };
+const expectedAtFullDurability: Record<BodyType, number> = { stone: 53, wood: 47, iron: 59, clay: 52 };
+const durabilities = [100, 75, 50, 25];
 
-for (const body of Object.keys(expected) as BodyType[]) {
-  const golem: Golem = {
+for (const body of Object.keys(expectedAtFullDurability) as BodyType[]) {
+  for (const durability of durabilities) {
+    const golem: Golem = {
     id: body,
     name: body,
     body,
@@ -18,14 +20,18 @@ for (const body of Object.keys(expected) as BodyType[]) {
     traits: getGolemTraits(body, 'water', 'attack'),
     createdAt: 0,
     expeditionsCount: 0,
-    durability: 100,
-  };
-  const prediction = evaluateCMultiAxis(golem.stats, golem.traits.includes('heat_proof'), region);
-  const report = runExpeditionSimulation(region, golem, () => 0, cMultiAxisExperiment(region));
-  if (prediction.totalDamage !== expected[body] || report.totalDamage !== prediction.totalDamage) {
-    throw new Error(`${body}: expected ${expected[body]}, predicted ${prediction.totalDamage}, actual ${report.totalDamage}`);
+      durability,
+    };
+    const prediction = evaluateCMultiAxis(golem.stats, golem.traits.includes('heat_proof'), region, durability);
+    const report = runExpeditionSimulation(region, golem, () => 0, cMultiAxisExperiment(region));
+    if (report.totalDamage !== prediction.totalDamage || prediction.status !== report.status) {
+      throw new Error(`${body}@${durability}: predicted ${prediction.totalDamage}/${prediction.status}, actual ${report.totalDamage}/${report.status}`);
+    }
+    if (durability === 100 && prediction.totalDamage !== expectedAtFullDurability[body]) {
+      throw new Error(`${body}@100: expected ${expectedAtFullDurability[body]}, predicted ${prediction.totalDamage}`);
+    }
+    console.log(`${body}@${durability}: ${prediction.route} ${ROUTE_LABELS[prediction.route].name}, predicted=${prediction.totalDamage}/${prediction.status}, actual=${report.totalDamage}/${report.status}`);
   }
-  console.log(`${body}: ${prediction.route} ${ROUTE_LABELS[prediction.route].name}, predicted=${prediction.totalDamage}, actual=${report.totalDamage}, status=${report.status}`);
 }
 
 console.log('C_UI prediction/result consistency: PASS');

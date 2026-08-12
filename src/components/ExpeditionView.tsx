@@ -82,7 +82,7 @@ export const ExpeditionView: React.FC<ExpeditionViewProps> = ({
     ? predictExpeditionOutcome(selectedRegion, selectedGolem.stats, selectedGolem.traits)
     : null;
   const cRoutePrediction = cUiExperiment && selectedRegion.id === 'region_ruins' && selectedGolem
-    ? evaluateCMultiAxis(selectedGolem.stats, selectedGolem.traits.includes('heat_proof'), selectedRegion)
+    ? evaluateCMultiAxis(selectedGolem.stats, selectedGolem.traits.includes('heat_proof'), selectedRegion, selectedGolem.durability)
     : null;
   const hasPendingCargo = !!currentReport && currentReport.status !== 'FAILED' && currentReport.loots.length > 0 && !lootClaimed;
 
@@ -100,7 +100,7 @@ export const ExpeditionView: React.FC<ExpeditionViewProps> = ({
     // Simulate swift expedition events
     setTimeout(() => {
       const routeEvaluation = cUiExperiment && selectedRegion.id === 'region_ruins'
-        ? evaluateCMultiAxis(selectedGolem.stats, selectedGolem.traits.includes('heat_proof'), selectedRegion)
+        ? evaluateCMultiAxis(selectedGolem.stats, selectedGolem.traits.includes('heat_proof'), selectedRegion, selectedGolem.durability)
         : null;
       const report = runExpeditionSimulation(
         selectedRegion,
@@ -419,7 +419,7 @@ export const ExpeditionView: React.FC<ExpeditionViewProps> = ({
                             </div>
                           ))}
                           <div className="col-span-2 border-t border-[#2D3135] pt-1 mt-1">
-                            予測損傷：{cRoutePrediction.totalDamage}% ／ 期待積載：{selectedGolem.stats.work * 2}
+                            予測損傷：{cRoutePrediction.totalDamage}% ／ 積載上限：{selectedGolem.stats.work * 2}
                           </div>
                         </div>
                       </div>

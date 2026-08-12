@@ -16,10 +16,12 @@ export interface CMultiAxisEvaluation {
   environmentDamage: number;
   navigationDamage: number;
   totalDamage: number;
-  status: 'SAFE' | 'DAMAGED' | 'PARTIAL' | 'FAILED';
+  fullRouteDamage: number;
+  failureStage: 'environment' | 'navigation' | 'breakthrough' | null;
+  status: 'SUCCESS' | 'PARTIAL' | 'FAILED';
 }
 
-export function evaluateCMultiAxis(stats: GolemStats, hasHeatProof: boolean, region: ExpeditionRegion): CMultiAxisEvaluation {
+export function evaluateCMultiAxis(stats: GolemStats, hasHeatProof: boolean, region: ExpeditionRegion, durability = 100): CMultiAxisEvaluation {
   const routeDamages: Record<BreakthroughRoute, number> = {
     POWER: Math.max(5, (region.recommendedStats.power - stats.power) * 12 + 12),
     ARMOR: Math.max(5, (region.recommendedStats.armor - stats.armor) * 10 + 10),
@@ -32,16 +34,26 @@ export function evaluateCMultiAxis(stats: GolemStats, hasHeatProof: boolean, reg
   const workDeficit = Math.max(0, region.recommendedStats.work - stats.work);
   const navigationDamage = Math.min(mobilityDeficit * 9, workDeficit * 6);
   const environmentDamage = hasHeatProof ? 0 : 42;
-  const totalDamage = environmentDamage + navigationDamage + routeDamage;
-  const status = totalDamage >= 100 ? 'FAILED' : totalDamage >= 55 ? 'PARTIAL' : totalDamage >= 25 ? 'DAMAGED' : 'SAFE';
-  return { route, routeDamage, routeDamages, environmentDamage, navigationDamage, totalDamage, status };
+  const fullRouteDamage = environmentDamage + navigationDamage + routeDamage;
+  let totalDamage = environmentDamage;
+  let failureStage: CMultiAxisEvaluation['failureStage'] = totalDamage >= durability ? 'environment' : null;
+  if (!failureStage) {
+    totalDamage += navigationDamage;
+    if (totalDamage >= durability) failureStage = 'navigation';
+  }
+  if (!failureStage) {
+    totalDamage += routeDamage;
+    if (totalDamage >= durability) failureStage = 'breakthrough';
+  }
+  const status = failureStage ? 'FAILED' : totalDamage >= 55 ? 'PARTIAL' : 'SUCCESS';
+  return { route, routeDamage, routeDamages, environmentDamage, navigationDamage, totalDamage, fullRouteDamage, failureStage, status };
 }
 
 export function cMultiAxisExperiment(region: ExpeditionRegion) {
   if (region.id !== 'region_ruins') return undefined;
   return {
     resistPenalty: 42,
-    mobilityDamage: (golem: Golem, target: ExpeditionRegion) => evaluateCMultiAxis(golem.stats, golem.traits.includes('heat_proof'), target).navigationDamage,
-    encounterDamage: (golem: Golem, target: ExpeditionRegion) => evaluateCMultiAxis(golem.stats, golem.traits.includes('heat_proof'), target).routeDamage,
+    mobilityDamage: (golem: Golem, target: ExpeditionRegion) => evaluateCMultiAxis(golem.stats, golem.traits.includes('heat_proof'), target, golem.durability).navigationDamage,
+    encounterDamage: (golem: Golem, target: ExpeditionRegion) => evaluateCMultiAxis(golem.stats, golem.traits.includes('heat_proof'), target, golem.durability).routeDamage,
   };
 }

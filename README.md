@@ -92,3 +92,11 @@ npm run playtest -- --variant=A_NUMERIC --runs=30 --seed=20260812 --max-days=30 
 | `C_MULTI_AXIS` | POWER／ARMOR／MOBILITY／WORKの最良突破経路を採用、耐熱欠如損傷42 |
 
 これらは比較実験専用であり、ゲーム画面・保存データ・正式な特性レシピには反映されません。softlock条件も全variantで維持されます。
+
+AとCのBODY別攻略結果は次で比較できます。
+
+```bash
+npm run experiment:ruins-bodies
+```
+
+各BODYを明示的に選択し、必要なBODY素材の取得地域へ戻る同一方針で、成功率、到達DAY、損傷、発見・回収重量、修理ACTION比率を測定します。

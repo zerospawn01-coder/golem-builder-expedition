@@ -21,6 +21,9 @@ const ACTIONS_PER_DAY = 3;
 const MAX_GOLEMS = 3;
 const variant = parseVariant();
 const experimentRegions = regionsFor(variant);
+const ruinsBodyFlag = process.argv.find((argument) => argument.startsWith('--ruins-body='))?.split('=')[1];
+const forcedRuinsBody = ruinsBodyFlag && ruinsBodyFlag !== 'any' ? ruinsBodyFlag as BodyType : null;
+if (forcedRuinsBody && !(forcedRuinsBody in BODIES)) throw new Error(`Unknown ruins body: ${forcedRuinsBody}`);
 
 type ActionName = 'build' | 'repair' | 'expedition' | 'disassemble';
 type PartKey = `${MaterialCategory}:${string}`;
@@ -45,6 +48,7 @@ interface RunMetrics {
   partSelections: Record<PartKey, number>;
   materialFlow: Record<PartKey, MaterialFlow>;
   damagedDecisions: { repairs: number; disassembles: number };
+  ruinsAttempts: Array<{ body: BodyType; damage: number; status: string; foundWeight: number; recoveredWeight: number }>;
   finalGolems: Array<{
     body: BodyType;
     core: CoreType;
@@ -230,6 +234,15 @@ function expedition(state: SimulationState, golem: Golem, regionId: string, rand
 
   for (const loot of report.loots) recordMaterial(state.metrics, loot.category, loot.id, 'found', loot.count);
   const selected = chooseCargo(report.loots, golem.stats.work * 2, state.metrics.policy, random);
+  if (regionId === 'region_ruins') {
+    state.metrics.ruinsAttempts.push({
+      body: golem.body,
+      damage: report.totalDamage,
+      status: report.status,
+      foundWeight: report.loots.reduce((sum, loot) => sum + loot.weight, 0),
+      recoveredWeight: [...selected].reduce((sum, index) => sum + report.loots[index].weight, 0),
+    });
+  }
   report.loots.forEach((loot, index) => {
     if (selected.has(index)) {
       addLoot(state, loot.category, loot.id, loot.count);
@@ -272,6 +285,7 @@ function chooseBuild(state: SimulationState, policy: PolicyName, random: () => n
   if (!hasManaSense) {
     const manaBuilds = craftableBuilds(state)
       .filter(([body, core, rune]) => traitsFor(variant, body, core, rune).includes('mana_sense'))
+      .filter(([body]) => !forcedRuinsBody || body === forcedRuinsBody)
       .sort((a, b) => calculateGolemStats(...b).mobility - calculateGolemStats(...a).mobility);
     if (manaBuilds[0]) return manaBuilds[0];
   }
@@ -291,6 +305,11 @@ function chooseExpedition(state: SimulationState, policy: PolicyName, random: ()
       const regionId = golem.traits.includes('mana_sense') ? 'region_ruins' : golem.traits.includes('night_vision') ? 'region_mine' : 'region_quarry';
       return { golem, regionId };
     }
+  }
+  if (forcedRuinsBody && state.inventory.body[forcedRuinsBody] <= 0) {
+    const sourceRegion = experimentRegions.find((region) => region.possibleLoot.some((loot) => loot.category === 'body' && loot.id === forcedRuinsBody));
+    const sourceGolem = sourceRegion && state.golems.find((golem) => golem.durability > 0 && (!sourceRegion.accessTrait || golem.traits.includes(sourceRegion.accessTrait)));
+    if (sourceRegion && sourceGolem) return { golem: sourceGolem, regionId: sourceRegion.id };
   }
   const manaGolem = state.golems.find((golem) => golem.traits.includes('mana_sense'));
   if (manaGolem) return { golem: manaGolem, regionId: 'region_ruins' };
@@ -317,6 +336,7 @@ function simulateRun(runId: number, seed: number, maxDays: number, policy: Polic
     partSelections: {},
     materialFlow: {},
     damagedDecisions: { repairs: 0, disassembles: 0 },
+    ruinsAttempts: [],
     finalGolems: [],
   };
   const state: SimulationState = {
@@ -408,7 +428,7 @@ function aggregate(runs: RunMetrics[]) {
 
 function printReport(runs: RunMetrics[]): void {
   const summary = aggregate(runs);
-  console.log(`GOLEM BUILDER v2.0.0 LOGIC PLAYTEST — ${variant} — ${runs.length} runs — ${runs[0]?.policy ?? 'UNKNOWN'}`);
+  console.log(`GOLEM BUILDER v2.0.0 LOGIC PLAYTEST — ${variant} — ${runs.length} runs — ${runs[0]?.policy ?? 'UNKNOWN'} — ruins body ${forcedRuinsBody ?? 'any'}`);
   console.log(`Ancient Ruins reached: ${summary.reached.length}/${runs.length} (${percentage(summary.reached.length, runs.length)})`);
   if (summary.reached.length > 0) {
     const days = summary.reached.map((run) => run.ruinsReachedDay as number);
@@ -445,7 +465,7 @@ if (process.argv.includes('--verify-determinism')) {
 }
 
 if (process.argv.includes('--json')) {
-  console.log(JSON.stringify({ config: { variant, variantDescription: VARIANT_DESCRIPTIONS[variant], runsPerPolicy: runsCount, baseSeed, maxDays, policies: selectedPolicies }, runs }, null, 2));
+  console.log(JSON.stringify({ config: { variant, variantDescription: VARIANT_DESCRIPTIONS[variant], ruinsBody: forcedRuinsBody ?? 'any', runsPerPolicy: runsCount, baseSeed, maxDays, policies: selectedPolicies }, runs }, null, 2));
 } else {
   for (const policy of selectedPolicies) {
     printReport(runs.filter((run) => run.policy === policy));

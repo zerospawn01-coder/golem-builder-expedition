@@ -74,3 +74,21 @@ npm run audit:rules
 ```
 
 破綻地域または進行デッドロックを検出した場合は終了コード2を返します。詳細データは `npm run audit:rules -- --json` で出力できます。
+
+### 古代遺跡A/B/C実験
+
+正式ルールを変更せず、`--variant`で独立した実験条件を注入できます。
+
+```bash
+npm run audit:rules -- --variant=A_NUMERIC
+npm run playtest -- --variant=A_NUMERIC --runs=30 --seed=20260812 --max-days=30 --policy=all
+```
+
+| variant | 実験条件 |
+|---|---|
+| `BASELINE` | v2.0.0そのまま |
+| `A_NUMERIC` | 古代遺跡のみPOWER 5、MOBILITY 7、耐熱欠如損傷36 |
+| `B_RECIPE` | 水CORE＋積載RUNEでも魔力感知を発現 |
+| `C_MULTI_AXIS` | POWER／ARMOR／MOBILITY／WORKの最良突破経路を採用、耐熱欠如損傷42 |
+
+これらは比較実験専用であり、ゲーム画面・保存データ・正式な特性レシピには反映されません。softlock条件も全variantで維持されます。

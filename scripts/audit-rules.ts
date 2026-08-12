@@ -10,6 +10,10 @@ import {
   runExpeditionSimulation,
 } from '../src/data/gameData';
 import type { BodyType, CoreType, ExpeditionRegion, Golem, MaterialCategory, RuneType, TraitType } from '../src/types';
+import { parseVariant, regionsFor, simulationExperiment, traitsFor, VARIANT_DESCRIPTIONS } from './experiment-variants';
+
+const variant = parseVariant();
+const experimentRegions = regionsFor(variant);
 
 type PartKey = `${MaterialCategory}:${string}`;
 
@@ -58,7 +62,7 @@ function createGolem(body: BodyType, core: CoreType, rune: RuneType): Golem {
     core,
     rune,
     stats: calculateGolemStats(body, core, rune),
-    traits: getGolemTraits(body, core, rune),
+    traits: traitsFor(variant, body, core, rune),
     createdAt: 0,
     expeditionsCount: 0,
     durability: 100,
@@ -74,7 +78,7 @@ const allBuilds = (Object.keys(BODIES) as BodyType[]).flatMap((body) =>
 function auditRegion(region: ExpeditionRegion): BuildAudit[] {
   return allBuilds.map((golem) => {
     const access = !region.accessTrait || golem.traits.includes(region.accessTrait);
-    const report = runExpeditionSimulation(region, golem, () => 0);
+    const report = runExpeditionSimulation(region, golem, () => 0, simulationExperiment(variant, region));
     return {
       key: golem.id,
       body: golem.body,
@@ -149,9 +153,9 @@ function expandSearchState(state: SearchState): SearchState[] {
     if (golem.durability > 0) {
       const full = createGolem(golem.body, golem.core, golem.rune);
       full.durability = golem.durability;
-      for (const region of EXPEDITION_REGIONS) {
+      for (const region of experimentRegions) {
         if (region.accessTrait && !full.traits.includes(region.accessTrait)) continue;
-        const report = runExpeditionSimulation(region, full, () => 0);
+        const report = runExpeditionSimulation(region, full, () => 0, simulationExperiment(variant, region));
         const candidate = cloneSearchState(state);
         candidate.golems[index].durability = Math.max(0, golem.durability - report.totalDamage);
         candidate.path.push(`expedition ${index}:${region.id} damage=${report.totalDamage} discard=all`);
@@ -248,7 +252,7 @@ function progressionClosure(regionAudits: Map<string, BuildAudit[]>) {
     iteration += 1;
     const newRegions: string[] = [];
     const newParts: PartKey[] = [];
-    for (const region of EXPEDITION_REGIONS) {
+    for (const region of experimentRegions) {
       if (reachableRegions.has(region.id)) continue;
       const feasible = (regionAudits.get(region.id) ?? []).some((result) => {
         const build = allBuilds.find((candidate) => candidate.id === result.key);
@@ -279,7 +283,7 @@ function allPartKeys(): PartKey[] {
   ];
 }
 
-const regionAudits = new Map(EXPEDITION_REGIONS.map((region) => [region.id, auditRegion(region)]));
+const regionAudits = new Map(experimentRegions.map((region) => [region.id, auditRegion(region)]));
 const progression = progressionClosure(regionAudits);
 const feasiblePartUsage = new Set<PartKey>();
 for (const results of regionAudits.values()) {
@@ -290,7 +294,7 @@ for (const results of regionAudits.values()) {
   }
 }
 
-const regions = EXPEDITION_REGIONS.map((region) => {
+const regions = experimentRegions.map((region) => {
   const results = regionAudits.get(region.id) ?? [];
   const feasible = results.filter((result) => result.survives);
   const bands: Record<DamageBand, number> = { SAFE: 0, DAMAGED: 0, PARTIAL: 0, FAILED: 0 };
@@ -307,13 +311,15 @@ const regions = EXPEDITION_REGIONS.map((region) => {
   };
 });
 
-const unreachableRegions = EXPEDITION_REGIONS.filter((region) => !progression.reachableRegions.has(region.id)).map((region) => region.id);
+const unreachableRegions = experimentRegions.filter((region) => !progression.reachableRegions.has(region.id)).map((region) => region.id);
 const unobtainableParts = allPartKeys().filter((part) => !progression.parts.has(part));
 const deadPartCandidates = allPartKeys().filter((part) => !feasiblePartUsage.has(part));
 const softlockSearch = boundedSoftlockSearch();
 
 const output = {
   version: '2.0.0',
+  variant,
+  variantDescription: VARIANT_DESCRIPTIONS[variant],
   buildSpace: allBuilds.length,
   regions,
   progression: {
@@ -331,7 +337,7 @@ const output = {
 if (process.argv.includes('--json')) {
   console.log(JSON.stringify(output, null, 2));
 } else {
-  console.log(`GOLEM BUILDER v2.0.0 RULE AUDIT — ${allBuilds.length} legal builds`);
+  console.log(`GOLEM BUILDER v2.0.0 RULE AUDIT — ${variant} — ${allBuilds.length} legal builds`);
   for (const region of regions) {
     console.log(`${region.name}: feasible ${region.feasibleBuilds}/${region.totalBuilds}, access ${region.accessBuilds}/${region.totalBuilds} [${region.classification}]`);
     console.log(`  SAFE ${region.damageBands.SAFE} / DAMAGED ${region.damageBands.DAMAGED} / PARTIAL ${region.damageBands.PARTIAL} / FAILED ${region.damageBands.FAILED}`);

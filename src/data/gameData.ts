@@ -501,7 +501,12 @@ export function predictExpeditionOutcome(
 export function runExpeditionSimulation(
   region: ExpeditionRegion,
   golem: Golem,
-  random: () => number = Math.random
+  random: () => number = Math.random,
+  experiment?: {
+    resistPenalty?: number;
+    mobilityDamage?: (golem: Golem, region: ExpeditionRegion) => number;
+    encounterDamage?: (golem: Golem, region: ExpeditionRegion) => number;
+  }
 ): ExpeditionReport {
   const logs: ExpeditionLogEvent[] = [];
   let totalDamage = 0;
@@ -541,7 +546,7 @@ export function runExpeditionSimulation(
     });
   } else {
     const traitName = region.resistTrait ? TRAITS[region.resistTrait].name : '推奨耐性';
-    const penaltyDamage = region.dangerStars * 22;
+    const penaltyDamage = experiment?.resistPenalty ?? region.dangerStars * 22;
     totalDamage += penaltyDamage;
     logs.push({
       step: 1,
@@ -575,7 +580,7 @@ export function runExpeditionSimulation(
   // 2. Mobility & Navigation Check
   const mobilityDiff = golem.stats.mobility - region.recommendedStats.mobility;
   if (mobilityDiff < 0) {
-    const mobPenalty = Math.abs(mobilityDiff) * 9;
+    const mobPenalty = experiment?.mobilityDamage?.(golem, region) ?? Math.abs(mobilityDiff) * 9;
     totalDamage += mobPenalty;
     logs.push({
       step: 2,
@@ -618,7 +623,18 @@ export function runExpeditionSimulation(
   const armorBonus = Math.max(0, golem.stats.armor - region.recommendedStats.armor);
   const baseEncounterDamage = Math.max(12, (region.dangerStars * 20) - armorBonus * 2);
 
-  if (powerDiff >= 0) {
+  const experimentalEncounterDamage = experiment?.encounterDamage?.(golem, region);
+  if (experimentalEncounterDamage !== undefined) {
+    const damage = experimentalEncounterDamage;
+    totalDamage += damage;
+    logs.push({
+      step: 3,
+      type: 'encounter',
+      title: `🧪 実験variant遭遇判定`,
+      message: `複数攻略軸のうち最適な突破方法を採用。（損傷 +${damage}%）`,
+      damageTaken: damage,
+    });
+  } else if (powerDiff >= 0) {
     const damage = Math.max(5, Math.floor(baseEncounterDamage * 0.35));
     totalDamage += damage;
     logs.push({

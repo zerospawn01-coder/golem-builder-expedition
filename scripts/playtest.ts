@@ -15,9 +15,12 @@ import type {
   MaterialCount,
   RuneType,
 } from '../src/types';
+import { parseVariant, regionsFor, simulationExperiment, traitsFor, VARIANT_DESCRIPTIONS } from './experiment-variants';
 
 const ACTIONS_PER_DAY = 3;
 const MAX_GOLEMS = 3;
+const variant = parseVariant();
+const experimentRegions = regionsFor(variant);
 
 type ActionName = 'build' | 'repair' | 'expedition' | 'disassemble';
 type PartKey = `${MaterialCategory}:${string}`;
@@ -32,6 +35,7 @@ interface MaterialFlow {
 interface RunMetrics {
   runId: number;
   seed: number;
+  variant: string;
   policy: PolicyName;
   ruinsReachedDay: number | null;
   stoppedDay: number;
@@ -111,7 +115,7 @@ function createGolem(
     core,
     rune,
     stats: calculateGolemStats(body, core, rune),
-    traits: getGolemTraits(body, core, rune),
+    traits: traitsFor(variant, body, core, rune),
     createdAt: 0,
     expeditionsCount: 0,
     durability: 100,
@@ -215,9 +219,9 @@ function addLoot(state: SimulationState, category: MaterialCategory, id: string,
 
 function expedition(state: SimulationState, golem: Golem, regionId: string, random: () => number): boolean {
   if (state.actionsLeft <= 0 || golem.durability <= 0) return false;
-  const region = EXPEDITION_REGIONS.find((candidate) => candidate.id === regionId);
+  const region = experimentRegions.find((candidate) => candidate.id === regionId);
   if (!region || (region.accessTrait && !golem.traits.includes(region.accessTrait))) return false;
-  const report = runExpeditionSimulation(region, golem, random);
+  const report = runExpeditionSimulation(region, golem, random, simulationExperiment(variant, region));
   state.actionsLeft -= 1;
   state.metrics.actions.expedition += 1;
   golem.expeditionsCount += 1;
@@ -265,18 +269,18 @@ function chooseBuild(state: SimulationState, policy: PolicyName, random: () => n
   if (!hasNightVision && hasMaterials(state, 'wood', 'fire', 'attack')) return ['wood', 'fire', 'attack'];
 
   const hasManaSense = state.golems.some((golem) => golem.traits.includes('mana_sense'));
-  if (!hasManaSense && state.inventory.core.water > 0 && state.inventory.rune.attack > 0) {
-    const bodies = (Object.keys(BODIES) as BodyType[])
-      .filter((body) => state.inventory.body[body] > 0)
-      .sort((a, b) => calculateGolemStats(b, 'water', 'attack').mobility - calculateGolemStats(a, 'water', 'attack').mobility);
-    if (bodies[0]) return [bodies[0], 'water', 'attack'];
+  if (!hasManaSense) {
+    const manaBuilds = craftableBuilds(state)
+      .filter(([body, core, rune]) => traitsFor(variant, body, core, rune).includes('mana_sense'))
+      .sort((a, b) => calculateGolemStats(...b).mobility - calculateGolemStats(...a).mobility);
+    if (manaBuilds[0]) return manaBuilds[0];
   }
   return null;
 }
 
 function chooseExpedition(state: SimulationState, policy: PolicyName, random: () => number): { golem: Golem; regionId: string } | null {
   if (policy === 'RANDOM_LEGAL') {
-    const choices = state.golems.flatMap((golem) => EXPEDITION_REGIONS
+    const choices = state.golems.flatMap((golem) => experimentRegions
       .filter((region) => golem.durability > 0 && (!region.accessTrait || golem.traits.includes(region.accessTrait)))
       .map((region) => ({ golem, regionId: region.id })));
     return choices.length > 0 ? choices[Math.floor(random() * choices.length)] : null;
@@ -303,6 +307,7 @@ function simulateRun(runId: number, seed: number, maxDays: number, policy: Polic
   const metrics: RunMetrics = {
     runId,
     seed,
+    variant,
     policy,
     ruinsReachedDay: null,
     stoppedDay: 1,
@@ -403,7 +408,7 @@ function aggregate(runs: RunMetrics[]) {
 
 function printReport(runs: RunMetrics[]): void {
   const summary = aggregate(runs);
-  console.log(`GOLEM BUILDER v2.0.0 LOGIC PLAYTEST — ${runs.length} runs — ${runs[0]?.policy ?? 'UNKNOWN'}`);
+  console.log(`GOLEM BUILDER v2.0.0 LOGIC PLAYTEST — ${variant} — ${runs.length} runs — ${runs[0]?.policy ?? 'UNKNOWN'}`);
   console.log(`Ancient Ruins reached: ${summary.reached.length}/${runs.length} (${percentage(summary.reached.length, runs.length)})`);
   if (summary.reached.length > 0) {
     const days = summary.reached.map((run) => run.ruinsReachedDay as number);
@@ -440,7 +445,7 @@ if (process.argv.includes('--verify-determinism')) {
 }
 
 if (process.argv.includes('--json')) {
-  console.log(JSON.stringify({ config: { runsPerPolicy: runsCount, baseSeed, maxDays, policies: selectedPolicies }, runs }, null, 2));
+  console.log(JSON.stringify({ config: { variant, variantDescription: VARIANT_DESCRIPTIONS[variant], runsPerPolicy: runsCount, baseSeed, maxDays, policies: selectedPolicies }, runs }, null, 2));
 } else {
   for (const policy of selectedPolicies) {
     printReport(runs.filter((run) => run.policy === policy));

@@ -114,3 +114,13 @@ http://localhost:3000/?experiment=C_UI_COMPREHENSION
 ```bash
 npm run verify:c-ui
 ```
+
+### M0/M1整備比較
+
+正式ゲームへ反映せず、単一修理と3段階整備を同一条件で比較します。
+
+```bash
+npm run experiment:maintenance
+```
+
+結果と判定は `MAINTENANCE_EXPERIMENT.md` に記録しています。

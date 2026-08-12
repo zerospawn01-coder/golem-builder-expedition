@@ -117,7 +117,7 @@ npm run verify:c-ui
 
 ### M0/M1整備比較
 
-正式ゲームへ反映せず、単一修理と3段階整備を同一条件で比較します。
+正式ゲームへ反映せず、単一修理、3段階整備、復帰処置を分離したM1Rを同一条件で比較します。
 
 ```bash
 npm run experiment:maintenance

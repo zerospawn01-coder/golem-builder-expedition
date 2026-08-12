@@ -28,10 +28,10 @@ if (forcedRuinsBody && !(forcedRuinsBody in BODIES)) throw new Error(`Unknown ru
 type ActionName = 'build' | 'repair' | 'expedition' | 'disassemble';
 type PartKey = `${MaterialCategory}:${string}`;
 type PolicyName = 'PROGRESSION_GREEDY' | 'SURVIVAL_FIRST' | 'WORK_MAX' | 'REPAIR_FIRST' | 'SCRAP_FIRST' | 'RANDOM_LEGAL';
-type MaintenanceVariant = 'M0_SINGLE_REPAIR' | 'M1_THREE_TIER_MAINTENANCE';
+type MaintenanceVariant = 'M0_SINGLE_REPAIR' | 'M1_THREE_TIER_MAINTENANCE' | 'M1R_RECOVERY_SEPARATION';
 type MaintenanceType = 'emergency' | 'standard' | 'overhaul';
 const maintenanceFlag = process.argv.find((argument) => argument.startsWith('--maintenance='))?.split('=')[1] ?? 'M0_SINGLE_REPAIR';
-if (!['M0_SINGLE_REPAIR', 'M1_THREE_TIER_MAINTENANCE'].includes(maintenanceFlag)) throw new Error(`Unknown maintenance variant: ${maintenanceFlag}`);
+if (!['M0_SINGLE_REPAIR', 'M1_THREE_TIER_MAINTENANCE', 'M1R_RECOVERY_SEPARATION'].includes(maintenanceFlag)) throw new Error(`Unknown maintenance variant: ${maintenanceFlag}`);
 const maintenanceVariant = maintenanceFlag as MaintenanceVariant;
 
 interface MaintenanceEvent {
@@ -71,6 +71,9 @@ interface RunMetrics {
   damagedDecisions: { repairs: number; disassembles: number };
   ruinsAttempts: Array<{ body: BodyType; damage: number; status: string; foundWeight: number; recoveredWeight: number }>;
   maintenanceEvents: MaintenanceEvent[];
+  deployDamaged: number;
+  switchGolem: number;
+  emergencyLoops: number;
   finalGolems: Array<{
     body: BodyType;
     core: CoreType;
@@ -89,6 +92,8 @@ interface SimulationState {
   expeditionSerial: Record<string, number>;
   emergencyUsedForExpedition: Record<string, number>;
   pendingMaintenanceEvent: number | null;
+  lastDeployedGolemId: string | null;
+  lastEmergencyRecoveryExpedition: Record<string, number>;
 }
 
 function mulberry32(seed: number): () => number {
@@ -193,16 +198,20 @@ function repair(state: SimulationState, golem: Golem, maintenanceType: Maintenan
   if (golem.durability >= 100) return false;
   const expeditionId = state.expeditionSerial[golem.id] ?? 0;
   const bodyCost = maintenanceType === 'emergency' ? 0 : 1;
-  const actionCost = maintenanceType === 'emergency' ? 0 : maintenanceType === 'overhaul' ? 2 : 1;
+  const actionCost = maintenanceType === 'emergency' && maintenanceVariant === 'M1_THREE_TIER_MAINTENANCE' ? 0 : maintenanceType === 'overhaul' ? 2 : 1;
   if (state.actionsLeft < actionCost || state.inventory.body[golem.body] < bodyCost) return false;
   if (maintenanceVariant === 'M0_SINGLE_REPAIR' && maintenanceType !== 'standard') return false;
-  if (maintenanceType === 'emergency' && (expeditionId === 0 || state.emergencyUsedForExpedition[golem.id] === expeditionId || golem.durability >= 60)) return false;
+  if (maintenanceType === 'emergency' && maintenanceVariant === 'M1_THREE_TIER_MAINTENANCE' && (expeditionId === 0 || state.emergencyUsedForExpedition[golem.id] === expeditionId || golem.durability >= 60)) return false;
+  if (maintenanceType === 'emergency' && maintenanceVariant === 'M1R_RECOVERY_SEPARATION' && golem.durability !== 0) return false;
   const durabilityBefore = golem.durability;
   const bodyStockBefore = state.inventory.body[golem.body];
   const actionsBefore = state.actionsLeft;
   const wasDamaged = golem.durability < 55;
   state.inventory.body[golem.body] -= bodyCost;
-  if (maintenanceType === 'emergency') {
+  if (maintenanceType === 'emergency' && maintenanceVariant === 'M1R_RECOVERY_SEPARATION') {
+    golem.durability = 20;
+    state.lastEmergencyRecoveryExpedition[golem.id] = expeditionId;
+  } else if (maintenanceType === 'emergency') {
     golem.durability = Math.min(60, golem.durability + 10);
     state.emergencyUsedForExpedition[golem.id] = expeditionId;
   } else if (maintenanceType === 'overhaul') {
@@ -302,9 +311,15 @@ function expedition(state: SimulationState, golem: Golem, regionId: string, rand
   state.actionsLeft -= 1;
   state.metrics.actions.expedition += 1;
   completeMaintenanceFollowup(state, 'expedition', golem.id, regionId);
+  if (state.lastDeployedGolemId && state.lastDeployedGolemId !== golem.id) state.metrics.switchGolem += 1;
+  if (golem.durability < 100) state.metrics.deployDamaged += 1;
+  state.lastDeployedGolemId = golem.id;
   golem.expeditionsCount += 1;
   state.expeditionSerial[golem.id] = (state.expeditionSerial[golem.id] ?? 0) + 1;
   golem.durability = Math.max(0, golem.durability - report.totalDamage);
+  if (golem.durability === 0 && state.lastEmergencyRecoveryExpedition[golem.id] === (state.expeditionSerial[golem.id] ?? 0) - 1) {
+    state.metrics.emergencyLoops += 1;
+  }
   increment(state.metrics.golemUsage, `${golem.body}/${golem.core}/${golem.rune}`);
 
   for (const loot of report.loots) recordMaterial(state.metrics, loot.category, loot.id, 'found', loot.count);
@@ -398,6 +413,18 @@ function chooseExpedition(state: SimulationState, policy: PolicyName, random: ()
 
 function chooseMaintenance(state: SimulationState, golem: Golem, policy: PolicyName): MaintenanceType | null {
   if (maintenanceVariant === 'M0_SINGLE_REPAIR') return state.actionsLeft >= 1 && state.inventory.body[golem.body] > 0 ? 'standard' : null;
+  if (maintenanceVariant === 'M1R_RECOVERY_SEPARATION') {
+    const hasBody = state.inventory.body[golem.body] > 0;
+    if (golem.durability === 0) {
+      if (policy === 'REPAIR_FIRST' && hasBody && state.actionsLeft >= 2) return 'overhaul';
+      if (policy === 'SURVIVAL_FIRST' && hasBody && state.actionsLeft >= 1) return 'standard';
+      return state.actionsLeft >= 1 ? 'emergency' : null;
+    }
+    if (policy === 'REPAIR_FIRST' && hasBody && state.actionsLeft >= 2 && golem.durability < 45) return 'overhaul';
+    if (policy === 'SURVIVAL_FIRST' && hasBody && state.actionsLeft >= 2 && golem.durability < 30) return 'overhaul';
+    if (hasBody && state.actionsLeft >= 1) return 'standard';
+    return null;
+  }
   const expeditionId = state.expeditionSerial[golem.id] ?? 0;
   const canEmergency = expeditionId > 0 && state.emergencyUsedForExpedition[golem.id] !== expeditionId && golem.durability < 60;
   const hasBody = state.inventory.body[golem.body] > 0;
@@ -432,6 +459,9 @@ function simulateRun(runId: number, seed: number, maxDays: number, policy: Polic
     damagedDecisions: { repairs: 0, disassembles: 0 },
     ruinsAttempts: [],
     maintenanceEvents: [],
+    deployDamaged: 0,
+    switchGolem: 0,
+    emergencyLoops: 0,
     finalGolems: [],
   };
   const state: SimulationState = {
@@ -443,6 +473,8 @@ function simulateRun(runId: number, seed: number, maxDays: number, policy: Polic
     expeditionSerial: {},
     emergencyUsedForExpedition: {},
     pendingMaintenanceEvent: null,
+    lastDeployedGolemId: null,
+    lastEmergencyRecoveryExpedition: {},
   };
 
   while (state.day <= maxDays && metrics.ruinsReachedDay === null) {

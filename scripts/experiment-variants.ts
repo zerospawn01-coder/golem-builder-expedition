@@ -1,5 +1,6 @@
 import { EXPEDITION_REGIONS, getGolemTraits } from '../src/data/gameData';
 import type { ExpeditionRegion, Golem, TraitType } from '../src/types';
+import { cMultiAxisExperiment } from '../src/data/cMultiAxis';
 
 export type VariantName = 'BASELINE' | 'A_NUMERIC' | 'B_RECIPE' | 'C_MULTI_AXIS';
 
@@ -33,20 +34,7 @@ export function simulationExperiment(variant: VariantName, region: ExpeditionReg
   if (region.id !== 'region_ruins') return undefined;
   if (variant === 'A_NUMERIC') return { resistPenalty: 36 };
   if (variant === 'C_MULTI_AXIS') {
-    return {
-      resistPenalty: 42,
-      mobilityDamage: (golem: Golem, target: ExpeditionRegion) => {
-        const deficit = Math.max(0, target.recommendedStats.mobility - golem.stats.mobility);
-        return Math.min(deficit * 9, Math.max(0, target.recommendedStats.work - golem.stats.work) * 6);
-      },
-      encounterDamage: (golem: Golem, target: ExpeditionRegion) => {
-        const powerRoute = Math.max(5, (target.recommendedStats.power - golem.stats.power) * 12 + 12);
-        const armorRoute = Math.max(5, (target.recommendedStats.armor - golem.stats.armor) * 10 + 10);
-        const mobilityRoute = Math.max(5, (target.recommendedStats.mobility - golem.stats.mobility) * 9 + 8);
-        const workRoute = Math.max(5, (target.recommendedStats.work - golem.stats.work) * 8 + 10);
-        return Math.min(powerRoute, armorRoute, mobilityRoute, workRoute);
-      },
-    };
+    return cMultiAxisExperiment(region);
   }
   return undefined;
 }

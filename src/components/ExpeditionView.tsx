@@ -29,6 +29,7 @@ import {
 } from '../data/gameData';
 import { GolemVisual } from './GolemVisual';
 import { soundFx } from '../utils/audio';
+import { cMultiAxisExperiment, evaluateCMultiAxis, ROUTE_LABELS, type CMultiAxisEvaluation } from '../data/cMultiAxis';
 
 interface ExpeditionViewProps {
   golemList: Golem[];
@@ -60,6 +61,8 @@ export const ExpeditionView: React.FC<ExpeditionViewProps> = ({
   const [selectedLootIndexes, setSelectedLootIndexes] = useState<number[]>([]);
   const [lootClaimed, setLootClaimed] = useState(false);
   const [expeditionCargoCapacity, setExpeditionCargoCapacity] = useState(0);
+  const [reportRoute, setReportRoute] = useState<CMultiAxisEvaluation | null>(null);
+  const cUiExperiment = new URLSearchParams(window.location.search).get('experiment') === 'C_UI_COMPREHENSION';
 
   const selectedRegion =
     EXPEDITION_REGIONS.find((r) => r.id === selectedRegionId) || EXPEDITION_REGIONS[0];
@@ -78,6 +81,9 @@ export const ExpeditionView: React.FC<ExpeditionViewProps> = ({
   const prediction = selectedGolem
     ? predictExpeditionOutcome(selectedRegion, selectedGolem.stats, selectedGolem.traits)
     : null;
+  const cRoutePrediction = cUiExperiment && selectedRegion.id === 'region_ruins' && selectedGolem
+    ? evaluateCMultiAxis(selectedGolem.stats, selectedGolem.traits.includes('heat_proof'), selectedRegion)
+    : null;
   const hasPendingCargo = !!currentReport && currentReport.status !== 'FAILED' && currentReport.loots.length > 0 && !lootClaimed;
 
   const handleStartExpedition = () => {
@@ -88,13 +94,23 @@ export const ExpeditionView: React.FC<ExpeditionViewProps> = ({
     setCurrentReport(null);
     setSelectedLootIndexes([]);
     setLootClaimed(false);
+    setReportRoute(null);
     setExpeditionCargoCapacity(selectedGolem.stats.work * 2);
 
     // Simulate swift expedition events
     setTimeout(() => {
-      const report = runExpeditionSimulation(selectedRegion, selectedGolem);
+      const routeEvaluation = cUiExperiment && selectedRegion.id === 'region_ruins'
+        ? evaluateCMultiAxis(selectedGolem.stats, selectedGolem.traits.includes('heat_proof'), selectedRegion)
+        : null;
+      const report = runExpeditionSimulation(
+        selectedRegion,
+        selectedGolem,
+        Math.random,
+        routeEvaluation ? cMultiAxisExperiment(selectedRegion) : undefined,
+      );
       setIsSimulating(false);
       setCurrentReport(report);
+      setReportRoute(routeEvaluation);
 
       if (report.status === 'FAILED') {
         soundFx.playClick();
@@ -383,6 +399,32 @@ export const ExpeditionView: React.FC<ExpeditionViewProps> = ({
                       })}
                     </div>
                   )}
+                  {cRoutePrediction && (
+                    <div className="p-3 rounded-xs border border-violet-500/60 bg-violet-950/20 space-y-2 text-[11px]">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-violet-300">C_UI_COMPREHENSION — 古代遺跡 出撃予測</span>
+                        <span className={`font-bold ${cRoutePrediction.status === 'FAILED' ? 'text-rose-400' : cRoutePrediction.status === 'PARTIAL' ? 'text-amber-400' : 'text-emerald-400'}`}>{cRoutePrediction.status}</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div className="bg-[#0F1113]/80 border border-[#2D3135] p-2 space-y-1">
+                          <div>必須条件：<span className={hasAccessKey ? 'text-emerald-400' : 'text-rose-400'}>{hasAccessKey ? '✓ 魔力感知' : '✕ 魔力感知なし'}</span></div>
+                          <div>環境条件：<span className={hasResistKey ? 'text-emerald-400' : 'text-amber-400'}>{hasResistKey ? '✓ 耐熱あり' : `△ 耐熱なし（+${cRoutePrediction.environmentDamage}損傷）`}</span></div>
+                          <div className="pt-1 text-violet-300 font-bold">推定突破経路：{cRoutePrediction.route} — {ROUTE_LABELS[cRoutePrediction.route].name}</div>
+                          <div className="text-[#8A8F98]">4経路の予測損傷を比較し、最小の経路を採用</div>
+                        </div>
+                        <div className="bg-[#0F1113]/80 border border-[#2D3135] p-2 grid grid-cols-2 gap-1">
+                          {(['POWER', 'ARMOR', 'MOBILITY', 'WORK'] as const).map((route) => (
+                            <div key={route} className={route === cRoutePrediction.route ? 'text-violet-300 font-bold' : 'text-[#8A8F98]'}>
+                              {route} {selectedGolem.stats[route.toLowerCase() as keyof typeof selectedGolem.stats]} → 損傷{cRoutePrediction.routeDamages[route]} {route === cRoutePrediction.route ? '← 採用' : ''}
+                            </div>
+                          ))}
+                          <div className="col-span-2 border-t border-[#2D3135] pt-1 mt-1">
+                            予測損傷：{cRoutePrediction.totalDamage}% ／ 期待積載：{selectedGolem.stats.work * 2}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div
                     className={`p-2.5 rounded-xs border text-xs flex items-center justify-between ${
                       hasAccessKey
@@ -477,6 +519,21 @@ export const ExpeditionView: React.FC<ExpeditionViewProps> = ({
               </div>
 
               {/* Event Logs List */}
+              {reportRoute && (
+                <div className="p-3 border border-violet-500/60 bg-violet-950/20 rounded-xs space-y-2 text-[11px]">
+                  <div className="font-bold text-violet-300">採用突破経路：{reportRoute.route} — {ROUTE_LABELS[reportRoute.route].name}</div>
+                  <div className="space-y-1 text-[#C5C9D0]">
+                    <div>✓ 魔力感知で入口を特定</div>
+                    <div className={reportRoute.environmentDamage > 0 ? 'text-amber-300' : 'text-emerald-300'}>{reportRoute.environmentDamage > 0 ? `⚠ 耐熱不足：+${reportRoute.environmentDamage}損傷` : '✓ 耐熱で環境損傷を無効化'}</div>
+                    {reportRoute.navigationDamage > 0 && <div>△ 移動・側道開削負荷：+{reportRoute.navigationDamage}損傷</div>}
+                    <div>✓ {ROUTE_LABELS[reportRoute.route].result}：+{reportRoute.routeDamage}損傷</div>
+                  </div>
+                  <div className="border-t border-violet-800/50 pt-2 flex justify-between font-bold">
+                    <span>予測 {reportRoute.totalDamage}% → 実測 {currentReport.totalDamage}%</span>
+                    <span>{currentReport.status}</span>
+                  </div>
+                </div>
+              )}
               <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                 {currentReport.logs.map((log) => (
                   <div

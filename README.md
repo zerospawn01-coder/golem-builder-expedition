@@ -100,3 +100,17 @@ npm run experiment:ruins-bodies
 ```
 
 各BODYを明示的に選択し、必要なBODY素材の取得地域へ戻る同一方針で、成功率、到達DAY、損傷、発見・回収重量、修理ACTION比率を測定します。
+
+### C_UI_COMPREHENSION実験
+
+通常ルールを変更せず、URLへ `?experiment=C_UI_COMPREHENSION` を付けた場合だけ、古代遺跡にCの複数攻略軸と因果表示を適用します。
+
+```text
+http://localhost:3000/?experiment=C_UI_COMPREHENSION
+```
+
+出撃前には必須／推奨条件、全4経路の損傷評価、採用経路、総損傷、積載量を表示します。帰還後には同じ採用経路と環境・移動・突破損傷を対応表示します。通常URLではこの実験UIもCルールも有効になりません。
+
+```bash
+npm run verify:c-ui
+```

@@ -33,7 +33,7 @@ Secondary gate: G5 World & Terminology
    ↓
 5. COST / STOCKを確認する
    ↓
-6. UNIT SUMMARYで用途を言語化する
+6. DESIGN CHARACTERISTICSから用途をプレイヤー自身が言語化する
    ↓
 7. FABRICATION REVIEWを開き、製造する
 ```
@@ -61,6 +61,7 @@ Secondary gate: G5 World & Terminology
 
 ### Tier 3 — Immediate consequences
 
+- Last changed part and transition, for example `FRAME: Iron → Stone`
 - Four current stats
 - Delta from the previously selected part
 - Active traits
@@ -84,7 +85,7 @@ Secondary gate: G5 World & Terminology
 - Unit silhouette or structural diagram
 - Generated unit name
 - Selected assembly
-- Intended role summary
+- Design characteristics without an automatically assigned role
 - Final fabrication review
 
 シルエットは装飾ではなく、FRAME、REACTOR、CONTROL SIGILの選択がどこへ反映されたかを示す構造図として扱う。
@@ -101,7 +102,7 @@ Secondary gate: G5 World & Terminology
 │ 1 FRAME                                  │       [STRUCTURAL DIAGRAM]        │
 │ [Stone] [Iron] [Wood] [Clay]             │    frame / reactor / sigil        │
 │ selected contribution + stock            │                                   │
-│                                          │ UNIT G-### / intended role        │
+│                                          │ CHANGED: FRAME Iron → Stone       │
 │ 2 REACTOR                                │                                   │
 │ [Fire] [Wind] [Water] [Earth]            │ POWER      8   +1                 │
 │ selected contribution + stock            │ ARMOR      7    —                 │
@@ -112,14 +113,15 @@ Secondary gate: G5 World & Terminology
 │                                          │ Heat Proof                        │
 │ COST / STOCK                             │ Cause: Iron Frame + Fire Reactor  │
 │ FRAME 1/2  REACTOR 1/1  SIGIL 1/3       │                                   │
-│ post-fabrication stock shown inline      │ ZONE FIT                          │
-│                                          │ ACCESS ✓  RESIST △                │
-│                                          │ Predicted damage 43%              │
+│ post-fabrication stock shown inline      │ ABANDONED MINE                    │
+│                                          │ ACCESS ✓  ENVIRONMENT △           │
+│                                          │ PWR ✓ ARM ✓ MOB ! WORK ✓          │
+│                                          │ PREDICTED DAMAGE 43%              │
 │                                          │ [OPEN FABRICATION REVIEW]         │
 └──────────────────────────────────────────┴───────────────────────────────────┘
 ```
 
-Desktopでは左を入力、右を結果に固定する。視線は左上から下へ選択し、右上から下へ結果を確認する。能力、特性、区域適合、製造確認を別画面へ分散しない。
+Desktopでは左を入力、右を結果に固定する。右側には編集可能な要素を置かない。視線は左上から下へ選択し、右上から下へ結果を確認する。能力、特性、区域適合、製造確認を別画面へ分散しない。
 
 ## Mobile wireframe
 
@@ -130,7 +132,7 @@ Desktopでは左を入力、右を結果に固定する。視線は左上から�
 ├──────────────────────────────┤
 │ [UNIT STRUCTURE — compact]   │
 │ P 8  A 7  M 5  W 6          │
-│ delta and trait summary      │
+│ delta source + trait summary │
 ├──────────────────────────────┤
 │ 1 FRAME                      │
 │ horizontally wrapping choices│
@@ -147,11 +149,14 @@ Mobileでは結果サマリーを入力より先に置き、選択変更後の�
 ## Interaction rules
 
 - パーツ選択は即時反映し、適用ボタンを要求しない。
+- Deltaの直前に、変更種別と遷移（例: `FRAME: Iron → Stone`）を表示する。
 - 直前選択との差分を4能力すべてに表示する。
 - 特性には名称だけでなく発現原因を表示する。
 - 消失した特性も選択直後に明示する。
-- Zone Fitはアクセス、耐性、能力不足、予測損傷を分解して表示する。
+- Zone Fitは単一総合スコアを主表示にしない。アクセス、環境耐性、4能力の充足、予測損傷を分解して表示する。
+- 必要な場合のみ、分解表示の後へ `VIABLE / HIGH RISK` のような小さな派遣状態を置ける。
 - 予測損傷はP0の共通評価関数による確定値を使用する。
+- ゲーム側は `MINING SPECIALIST` のような用途を断定しない。高装甲、耐熱、低機動など、用途判断の根拠となるDesign Characteristicsだけを表示する。
 - Fabrication Reviewを開くまで資材とACTIONを消費しない。
 - 最終確認には選択部品、能力、特性、区域適合、消費後在庫を表示する。
 - ランダム選択は主要判断フローから外し、低優先度の補助操作とする。
@@ -169,6 +174,9 @@ Mobileでは結果サマリーを入力より先に置き、選択変更後の�
 - No ACTION remaining
 - Fabrication review ready
 - Fabrication completed
+- Rapid consecutive part changes
+
+連続変更状態では、Deltaが常に直前比較であること、特性の獲得・消失が残留しないこと、予測損傷とCost / Stockが最新構成だけを表すことを確認する。
 
 ## V-1E human validation
 
@@ -181,6 +189,41 @@ Mobileでは結果サマリーを入力より先に置き、選択変更後の�
 5. 製造すると何を消費し、在庫はいくつ残りますか。
 
 各回答を `OBSERVED / NOT OBSERVED / AMBIGUOUS` で記録する。見栄えの好みではなく、選択理由と用途を説明できるかをV-1の合否判断に使う。
+
+### Observation criteria
+
+| Question | `OBSERVED` condition |
+|---|---|
+| Q1 Part reason | 3部品中2つ以上について、能力・特性・区域との関係を説明できる |
+| Q2 Trade-off | 改善を1つ以上、悪化を1つ以上、正しく説明できる |
+| Q3 Zone purpose | 区域名と適性理由を1つ以上説明できる |
+| Q4 Trait cause | 発現原因となる正しい構成要素を特定できる |
+| Q5 Fabrication cost | 消費物と製造後在庫を正しく説明できる |
+
+### V-1 PASS candidate
+
+```text
+Q1 OBSERVED
+Q2 OBSERVED
+Q3 OBSERVED
+Q4 OBSERVED
+Q5 OBSERVED
+
+critical misunderstanding = 0
+```
+
+少人数のcomprehension testから開始し、同じ誤解が複数人で再現するかを優先して観察する。統計的な有意差はこの段階の要件にしない。
+
+## Progression after this baseline
+
+```text
+V-1 INFORMATION ARCHITECTURE
+→ wireframe implementation
+→ required-state screenshots
+→ V-1E human comprehension test
+→ PASS / FIX
+→ World Skin / visual language
+```
 
 ## Out of scope
 

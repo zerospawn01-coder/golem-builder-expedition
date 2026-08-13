@@ -8,6 +8,8 @@ MVP status and human-playtest policy: [`docs/MVP_STATUS_AND_PLAYTEST_POLICY.md`]
 
 Current development priorities: [`docs/CURRENT_DEVELOPMENT_PRIORITIES.md`](docs/CURRENT_DEVELOPMENT_PRIORITIES.md)
 
+V-1 Design / Fabrication information architecture and wireframe: [`docs/visual/V1_DESIGN_FABRICATION_WIREFRAME.md`](docs/visual/V1_DESIGN_FABRICATION_WIREFRAME.md)
+
 ゴーレムを設計し、未知の地域へ派遣し、回収素材で次の専用機を作る短いビルドゲームです。独立戦闘モードは持たず、遭遇は遠征結果のPOWER / ARMOR判定として処理します。
 
 ## MVPの流れ

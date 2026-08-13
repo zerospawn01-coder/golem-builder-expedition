@@ -2,6 +2,8 @@
 
 Release baseline: `v2.0.0`
 
+World and UI terminology baseline: [`docs/WORLD_AND_TERMINOLOGY.md`](docs/WORLD_AND_TERMINOLOGY.md)
+
 ゴーレムを設計し、未知の地域へ派遣し、回収素材で次の専用機を作る短いビルドゲームです。独立戦闘モードは持たず、遭遇は遠征結果のPOWER / ARMOR判定として処理します。
 
 ## MVPの流れ

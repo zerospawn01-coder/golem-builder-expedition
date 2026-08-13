@@ -1,6 +1,12 @@
 # GOLEM BUILDER — World & Terminology Baseline
 
-Status: MVP canonical baseline
+```text
+STATUS        MVP CANONICAL
+WORLD AXIS    LOCKED
+TERMINOLOGY   LOCKED
+INTERNAL IDs  UNCHANGED
+MVP RULES     UNCHANGED
+```
 
 ## World premise
 
@@ -37,15 +43,17 @@ GOLEM BUILDERの表現軸は次の3つとする。
 
 `POWER / ARMOR / MOBILITY / WORK` は内部・表示とも維持する。短く読みやすく、ビルド比較に適しているため、過度なSF用語へ置き換えない。
 
-## Maintenance vocabulary
+MVPでは `EXPERIMENTAL FOUNDRY / 実験工廠` を拠点施設の名称として使用する。将来、解析・整備・資材管理を別区画へ拡張する場合は、施設全体ではなく主要製造区画の呼称として維持できる。
 
-| Internal ID | Player-facing English | 日本語表示 |
-|---|---|---|
-| `MAINTENANCE_LIGHT` | FIELD REPAIR | 応急修復 |
-| `MAINTENANCE_STANDARD` | STANDARD SERVICE | 通常整備 |
-| `MAINTENANCE_FULL` | OVERHAUL | オーバーホール |
+## Future / not yet canonical
 
-MVPの正式ルールが単一修理の間は、画面上では `REPAIR / 修復` を使用する。3段階整備を正式採用した時点で上記へ切り替える。
+- `FABRICATION VARIANCE / 製造偏差`
+- 3段階整備
+- 派遣・曝露履歴に依存する異常物回収
+
+MVPの正式ルールが単一修理の間は、画面上では `REPAIR / 修復` を使用する。
+
+3段階整備を正式採用する場合、軽整備の英語名は実行場所と挙動を確定してから選ぶ。派遣先で行う最低限の補修なら `FIELD REPAIR`、工廠帰還後の緊急処置なら `EMERGENCY REPAIR`、軽微な通常修理なら `MINOR REPAIR` とする。現時点ではいずれも正式語彙に固定しない。
 
 ## Interface voice
 
@@ -66,4 +74,4 @@ DESIGN
 → MAINTENANCE / DISASSEMBLY
 ```
 
-将来、同一設計の個体差を導入する場合はレアリティではなく `FABRICATION VARIANCE / 製造偏差` として扱う。解体時の異常素材は完全ランダムではなく、派遣区域と曝露履歴を原因候補として記録する。
+将来、同一設計の個体差を導入する場合はレアリティではなく `FABRICATION VARIANCE / 製造偏差` として扱う。解体時の異常素材を導入する場合は完全ランダムではなく、派遣区域と曝露履歴を原因候補として記録する。これらは設計原則であり、MVPの実装済みルールではない。

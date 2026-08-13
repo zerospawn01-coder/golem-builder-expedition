@@ -1,6 +1,7 @@
 # GOLEM BUILDER — Current Development Priorities
 
-Status: canonical development decision  
+Status: canonical development decision
+
 Effective: 2026-08-14
 
 This is a current, revisable decision record. Permanent phase and decision rules live in [`MVP_STATUS_AND_PLAYTEST_POLICY.md`](MVP_STATUS_AND_PLAYTEST_POLICY.md).

@@ -426,65 +426,109 @@ export const DEFAULT_INVENTORY: MaterialCount = {
   },
 };
 
+export interface ExpeditionDamageUnit {
+  stats: GolemStats;
+  traits: TraitType[];
+  durability: number;
+}
+
+export interface ExpeditionDamageExperiment {
+  resistPenalty?: number;
+  mobilityDamage?: (unit: ExpeditionDamageUnit, region: ExpeditionRegion) => number;
+  encounterDamage?: (unit: ExpeditionDamageUnit, region: ExpeditionRegion) => number;
+}
+
+export interface ExpeditionDamageEvaluation {
+  hasAccessKey: boolean;
+  hasResistKey: boolean;
+  resistDamage: number;
+  mobilityDamage: number;
+  encounterDamage: number;
+  totalDamage: number;
+  failureStage: 'entry' | 'mobility' | 'encounter' | null;
+  status: 'SUCCESS' | 'PARTIAL' | 'FAILED' | 'BLOCKED';
+}
+
 /**
- * Predicts expedition outcome for UI simulation display in Workshop
+ * Canonical expedition damage evaluation shared by prediction and resolution.
+ * Damage stops accumulating when the unit is destroyed, matching expedition logs.
+ */
+export function evaluateExpeditionDamage(
+  region: ExpeditionRegion,
+  unit: ExpeditionDamageUnit,
+  experiment?: ExpeditionDamageExperiment,
+): ExpeditionDamageEvaluation {
+  const hasAccessKey = !region.accessTrait || unit.traits.includes(region.accessTrait);
+  const hasResistKey = !region.resistTrait || unit.traits.includes(region.resistTrait);
+  if (!hasAccessKey) {
+    return {
+      hasAccessKey,
+      hasResistKey,
+      resistDamage: 0,
+      mobilityDamage: 0,
+      encounterDamage: 0,
+      totalDamage: 0,
+      failureStage: null,
+      status: 'BLOCKED',
+    };
+  }
+
+  const resistDamage = hasResistKey ? 0 : experiment?.resistPenalty ?? region.dangerStars * 22;
+  let totalDamage = resistDamage;
+  if (totalDamage >= unit.durability) {
+    return { hasAccessKey, hasResistKey, resistDamage, mobilityDamage: 0, encounterDamage: 0, totalDamage, failureStage: 'entry', status: 'FAILED' };
+  }
+
+  const mobilityDiff = unit.stats.mobility - region.recommendedStats.mobility;
+  const mobilityDamage = mobilityDiff < 0
+    ? experiment?.mobilityDamage?.(unit, region) ?? Math.abs(mobilityDiff) * 9
+    : 0;
+  totalDamage += mobilityDamage;
+  if (totalDamage >= unit.durability) {
+    return { hasAccessKey, hasResistKey, resistDamage, mobilityDamage, encounterDamage: 0, totalDamage, failureStage: 'mobility', status: 'FAILED' };
+  }
+
+  const powerDiff = unit.stats.power - region.recommendedStats.power;
+  const armorBonus = Math.max(0, unit.stats.armor - region.recommendedStats.armor);
+  const baseEncounterDamage = Math.max(12, region.dangerStars * 20 - armorBonus * 2);
+  const experimentalEncounterDamage = experiment?.encounterDamage?.(unit, region);
+  const encounterDamage = experimentalEncounterDamage !== undefined
+    ? experimentalEncounterDamage
+    : powerDiff >= 0
+      ? Math.max(5, Math.floor(baseEncounterDamage * 0.35))
+      : Math.floor(baseEncounterDamage * 1.5 + Math.abs(powerDiff) * 6);
+  totalDamage += encounterDamage;
+  const failureStage = totalDamage >= unit.durability ? 'encounter' : null;
+  const status = failureStage ? 'FAILED' : totalDamage >= 55 ? 'PARTIAL' : 'SUCCESS';
+
+  return { hasAccessKey, hasResistKey, resistDamage, mobilityDamage, encounterDamage, totalDamage, failureStage, status };
+}
+
+/**
+ * Predicts the exact expedition damage resolved by runExpeditionSimulation.
  */
 export function predictExpeditionOutcome(
   region: ExpeditionRegion,
   stats: GolemStats,
-  traits: TraitType[]
+  traits: TraitType[],
+  durability = 100,
+  experiment?: ExpeditionDamageExperiment,
 ) {
-  const hasAccessKey = !region.accessTrait || traits.includes(region.accessTrait);
-  const hasResistKey = !region.resistTrait || traits.includes(region.resistTrait);
-
+  const evaluation = evaluateExpeditionDamage(region, { stats, traits, durability }, experiment);
   const powerDiff = stats.power - region.recommendedStats.power;
   const armorDiff = stats.armor - region.recommendedStats.armor;
   const mobilityDiff = stats.mobility - region.recommendedStats.mobility;
   const workDiff = stats.work - region.recommendedStats.work;
-
-  // Base environmental damage estimation
-  let baseDamage = 12 + region.dangerStars * 12;
-
-  if (!hasResistKey) {
-    baseDamage += region.dangerStars * 20;
-  }
-
-  if (mobilityDiff < 0) {
-    baseDamage += Math.abs(mobilityDiff) * 9;
-  }
-
-  if (powerDiff < 0) {
-    baseDamage += Math.abs(powerDiff) * 10;
-  } else {
-    baseDamage -= Math.min(15, powerDiff * 3);
-  }
-
-  if (armorDiff < 0) {
-    baseDamage += Math.abs(armorDiff) * 8;
-  } else {
-    baseDamage -= Math.min(15, armorDiff * 3);
-  }
-
-  const minEstimatedDamage = Math.max(5, Math.floor(baseDamage * 0.85));
-  const maxEstimatedDamage = Math.min(100, Math.floor(baseDamage * 1.15));
-
-  let statusPrediction: 'SAFE' | 'PARTIAL' | 'DANGER' | 'BLOCKED' = 'SAFE';
-
-  if (!hasAccessKey) {
-    statusPrediction = 'BLOCKED';
-  } else if (maxEstimatedDamage >= 100) {
-    statusPrediction = 'DANGER';
-  } else if (maxEstimatedDamage >= 50) {
-    statusPrediction = 'PARTIAL';
-  } else {
-    statusPrediction = 'SAFE';
-  }
+  const statusPrediction: 'SAFE' | 'PARTIAL' | 'DANGER' | 'BLOCKED' =
+    evaluation.status === 'BLOCKED' ? 'BLOCKED'
+      : evaluation.status === 'FAILED' ? 'DANGER'
+        : evaluation.status === 'PARTIAL' ? 'PARTIAL'
+          : 'SAFE';
 
   return {
-    hasAccessKey,
-    hasResistKey,
-    minEstimatedDamage,
-    maxEstimatedDamage,
+    ...evaluation,
+    minEstimatedDamage: evaluation.totalDamage,
+    maxEstimatedDamage: evaluation.totalDamage,
     statusPrediction,
     statAnalysis: {
       power: { current: stats.power, required: region.recommendedStats.power, ok: powerDiff >= 0 },
@@ -502,13 +546,10 @@ export function runExpeditionSimulation(
   region: ExpeditionRegion,
   golem: Golem,
   random: () => number = Math.random,
-  experiment?: {
-    resistPenalty?: number;
-    mobilityDamage?: (golem: Golem, region: ExpeditionRegion) => number;
-    encounterDamage?: (golem: Golem, region: ExpeditionRegion) => number;
-  }
+  experiment?: ExpeditionDamageExperiment,
 ): ExpeditionReport {
   const logs: ExpeditionLogEvent[] = [];
+  const damage = evaluateExpeditionDamage(region, golem, experiment);
   let totalDamage = 0;
   const currentDurability = golem.durability;
 
@@ -534,7 +575,7 @@ export function runExpeditionSimulation(
   const isDestroyed = (dmgAcc: number) => dmgAcc >= currentDurability;
 
   // 1. Entry & Resist Trait Check
-  const hasResist = !region.resistTrait || golem.traits.includes(region.resistTrait);
+  const hasResist = damage.hasResistKey;
   if (hasResist) {
     logs.push({
       step: 1,
@@ -546,7 +587,7 @@ export function runExpeditionSimulation(
     });
   } else {
     const traitName = region.resistTrait ? TRAITS[region.resistTrait].name : '推奨耐性';
-    const penaltyDamage = experiment?.resistPenalty ?? region.dangerStars * 22;
+    const penaltyDamage = damage.resistDamage;
     totalDamage += penaltyDamage;
     logs.push({
       step: 1,
@@ -578,9 +619,8 @@ export function runExpeditionSimulation(
   }
 
   // 2. Mobility & Navigation Check
-  const mobilityDiff = golem.stats.mobility - region.recommendedStats.mobility;
-  if (mobilityDiff < 0) {
-    const mobPenalty = experiment?.mobilityDamage?.(golem, region) ?? Math.abs(mobilityDiff) * 9;
+  if (damage.mobilityDamage > 0) {
+    const mobPenalty = damage.mobilityDamage;
     totalDamage += mobPenalty;
     logs.push({
       step: 2,
@@ -620,39 +660,36 @@ export function runExpeditionSimulation(
 
   // 3. Combat & Encounter (POWER / ARMOR)
   const powerDiff = golem.stats.power - region.recommendedStats.power;
-  const armorBonus = Math.max(0, golem.stats.armor - region.recommendedStats.armor);
-  const baseEncounterDamage = Math.max(12, (region.dangerStars * 20) - armorBonus * 2);
-
-  const experimentalEncounterDamage = experiment?.encounterDamage?.(golem, region);
+  const experimentalEncounterDamage = experiment?.encounterDamage ? damage.encounterDamage : undefined;
   if (experimentalEncounterDamage !== undefined) {
-    const damage = experimentalEncounterDamage;
-    totalDamage += damage;
+    const encounterDamage = experimentalEncounterDamage;
+    totalDamage += encounterDamage;
     logs.push({
       step: 3,
       type: 'encounter',
       title: `🧪 実験variant遭遇判定`,
-      message: `複数攻略軸のうち最適な突破方法を採用。（損傷 +${damage}%）`,
-      damageTaken: damage,
+      message: `複数攻略軸のうち最適な突破方法を採用。（損傷 +${encounterDamage}%）`,
+      damageTaken: encounterDamage,
     });
   } else if (powerDiff >= 0) {
-    const damage = Math.max(5, Math.floor(baseEncounterDamage * 0.35));
-    totalDamage += damage;
+    const encounterDamage = damage.encounterDamage;
+    totalDamage += encounterDamage;
     logs.push({
       step: 3,
       type: 'encounter',
       title: `⚔️ 遭遇戦・障害破砕`,
-      message: `【${region.hazards[0] || '敵対生物'}】と遭遇！圧倒的POWER (${golem.stats.power}) で即座に破砕。（損傷 +${damage}%）`,
-      damageTaken: damage,
+      message: `【${region.hazards[0] || '敵対生物'}】と遭遇！圧倒的POWER (${golem.stats.power}) で即座に破砕。（損傷 +${encounterDamage}%）`,
+      damageTaken: encounterDamage,
     });
   } else {
-    const damage = Math.floor(baseEncounterDamage * 1.5 + Math.abs(powerDiff) * 6);
-    totalDamage += damage;
+    const encounterDamage = damage.encounterDamage;
+    totalDamage += encounterDamage;
     logs.push({
       step: 3,
       type: 'encounter',
       title: `💥 遭遇戦苦戦・ダメージ大打撃`,
-      message: `【${region.hazards[0] || '現地生物'}】に攻撃力不足で大苦戦！装甲（ARMOR ${golem.stats.armor}）で耐えるも大損害。（損傷 +${damage}%）`,
-      damageTaken: damage,
+      message: `【${region.hazards[0] || '現地生物'}】に攻撃力不足で大苦戦！装甲（ARMOR ${golem.stats.armor}）で耐えるも大損害。（損傷 +${encounterDamage}%）`,
+      damageTaken: encounterDamage,
     });
   }
 

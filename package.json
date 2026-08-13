@@ -11,6 +11,7 @@
     "audit:rules": "tsx scripts/audit-rules.ts",
     "experiment:ruins-bodies": "tsx scripts/compare-ruins-bodies.ts",
     "verify:c-ui": "tsx scripts/verify-c-ui.ts",
+    "verify:damage": "tsx scripts/verify-damage-consistency.ts",
     "experiment:maintenance": "tsx scripts/compare-maintenance.ts",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"

@@ -1,9 +1,13 @@
 # V-1 — Design / Fabrication Information Architecture & Wireframe
 
-Status: functional visual baseline  
-Target: Design / Fabrication screen  
-Rule change: none  
-Primary gate: G4 UI Comprehension  
+Status: functional visual baseline
+
+Target: Design / Fabrication screen
+
+Rule change: none
+
+Primary gate: G4 UI Comprehension
+
 Secondary gate: G5 World & Terminology
 
 ## Objective

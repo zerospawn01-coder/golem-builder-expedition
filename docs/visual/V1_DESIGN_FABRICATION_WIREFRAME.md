@@ -1,6 +1,6 @@
 # V-1 — Design / Fabrication Information Architecture & Wireframe
 
-Status: functional visual baseline
+Status: ready for wireframe implementation
 
 Target: Design / Fabrication screen
 
@@ -47,7 +47,7 @@ Secondary gate: G5 World & Terminology
 - Target Zone
 - Current stock summary
 - Remaining ACTION
-- Unit capacity
+- Unit slots, displayed as `UNIT SLOTS 2 / 3`
 
 スクロールや選択変更の間も、何のために設計しているかを見失わない位置へ置く。
 
@@ -109,9 +109,10 @@ Secondary gate: G5 World & Terminology
 │                                          │ MOBILITY   5   -1                 │
 │ 3 CONTROL SIGIL                          │ WORK       6   +2                 │
 │ [Attack] [Defense] [Speed] [Capacity]    │                                   │
-│ selected contribution + stock            │ TRAITS                            │
-│                                          │ Heat Proof                        │
-│ COST / STOCK                             │ Cause: Iron Frame + Fire Reactor  │
+│ selected contribution + stock            │ TRAITS: Heat Proof                 │
+│                                          │ Cause: Stone Frame + Fire Reactor │
+│ COST / STOCK                             │ LOST: Poison Proof                │
+│                                          │ Previous: Iron + Defense          │
 │ FRAME 1/2  REACTOR 1/1  SIGIL 1/3       │                                   │
 │ post-fabrication stock shown inline      │ ABANDONED MINE                    │
 │                                          │ ACCESS ✓  ENVIRONMENT △           │
@@ -131,7 +132,7 @@ Desktopでは左を入力、右を結果に固定する。右側には編集可�
 │ access / danger / prediction │
 ├──────────────────────────────┤
 │ [UNIT STRUCTURE — compact]   │
-│ P 8  A 7  M 5  W 6          │
+│ PWR 8 ARM 7 MOB 5 WORK 6    │
 │ delta source + trait summary │
 ├──────────────────────────────┤
 │ 1 FRAME                      │
@@ -149,6 +150,7 @@ Mobileでは結果サマリーを入力より先に置き、選択変更後の�
 ## Interaction rules
 
 - パーツ選択は即時反映し、適用ボタンを要求しない。
+- Default starter selectionでは`CHANGED`とDeltaを表示しない。最初のユーザー変更後から、直前構成との差分を表示する。
 - Deltaの直前に、変更種別と遷移（例: `FRAME: Iron → Stone`）を表示する。
 - 直前選択との差分を4能力すべてに表示する。
 - 特性には名称だけでなく発現原因を表示する。
@@ -160,6 +162,8 @@ Mobileでは結果サマリーを入力より先に置き、選択変更後の�
 - Fabrication Reviewを開くまで資材とACTIONを消費しない。
 - 最終確認には選択部品、能力、特性、区域適合、消費後在庫を表示する。
 - ランダム選択は主要判断フローから外し、低優先度の補助操作とする。
+- Mobileの能力略称は初回検証では `PWR / ARM / MOB / WORK` とする。`P / A / M / W` への短縮はV-1Eで理解が確認されるまで採用しない。
+- 保有機体枠は常に `UNIT SLOTS current / max` と表示する。満杯時は `UNIT SLOTS 3 / 3 — NO FREE SLOT` とし、製造不能理由へ同じ文言を接続する。
 
 ## Required states
 
@@ -223,6 +227,28 @@ V-1 INFORMATION ARCHITECTURE
 → V-1E human comprehension test
 → PASS / FIX
 → World Skin / visual language
+```
+
+## Readiness assessment
+
+```text
+Objective definition        PASS
+Decision flow               PASS
+Information hierarchy       PASS
+Desktop structure           PASS
+Mobile structure            PASS
+Immediate feedback model    PASS
+Trade-off visibility        PASS
+Trait causality             PASS
+Zone-fit decomposition      PASS
+Fabrication readiness       PASS
+Human validation design     PASS
+
+Rule changes                NONE
+World Skin                  HOLD
+
+STATUS
+READY FOR WIREFRAME IMPLEMENTATION
 ```
 
 ## Out of scope

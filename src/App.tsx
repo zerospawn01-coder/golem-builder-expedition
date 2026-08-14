@@ -19,12 +19,20 @@ import {
   getGolemTraits,
   generateGolemName,
 } from './data/gameData';
+import GravityDepthExperiment from './experiments/gravity-depth-v0/GravityDepthExperiment';
 
 const LOCAL_STORAGE_KEY = 'golem_builder_expedition_save_v2';
 const MAX_GOLEMS = 3;
 const ACTIONS_PER_DAY = 3;
 
 export default function App() {
+  if (new URLSearchParams(window.location.search).get('experiment') === 'GRAVITY_DEPTH_V0') {
+    return <GravityDepthExperiment />;
+  }
+  return <CanonicalApp />;
+}
+
+function CanonicalApp() {
   const [day, setDay] = useState(() => Number(localStorage.getItem(`${LOCAL_STORAGE_KEY}_day`)) || 1);
   const [actionsLeft, setActionsLeft] = useState(() => {
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_actions`);

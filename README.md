@@ -7,6 +7,8 @@
 > **Release baseline:** `v2.0.0`
 >
 > **Release ready:** No
+>
+> **R2 Blueprint Library:** Implementation complete / Machine gates pass / Behavioral evidence insufficient / Canonical hold
 
 ![PC expedition telemetry North Star](docs/visual/north-star/expedition-desktop-north-star.png)
 
@@ -29,6 +31,8 @@ DESIGN
 - 1日は3 ACTIONです。製造・修理・遠征は各1 ACTION、解体は0 ACTIONです。
 - 予測損傷と実際の遠征結果は同じ評価経路を使用します。
 - Blueprintは設計記録であり、完成UNITや素材を複製しません。
+- Blueprintの用途タグはプレイヤーが付ける設計知メタデータであり、能力値や損傷に効果を与えません。
+- BlueprintのLOADはDesign Formを復元するだけです。製造は通常の素材と1 ACTIONを要し、正本の`fabricateGolem()`を通ります。
 - `GRAVITY_DEPTH_V0` などの実験は通常セーブと正本ルールから隔離されています。
 - Safe Supply、失敗報酬、多段整備、Reserve Hangarは現在の正本には含まれません。
 
@@ -70,6 +74,7 @@ pnpm build
 pnpm verify:damage
 pnpm verify:gravity-depth
 pnpm verify:fabrication
+pnpm verify:r2-blueprints
 ```
 
 Deterministic playtest harness:
@@ -104,6 +109,9 @@ Start with the [documentation index](docs/README.md).
 |---|---|
 | [MVP status and playtest policy](docs/MVP_STATUS_AND_PLAYTEST_POLICY.md) | Canonical phase and test policy |
 | [Current development priorities](docs/CURRENT_DEVELOPMENT_PRIORITIES.md) | Current work and hold decisions |
+| [R2 Blueprint Library preregistration](docs/experiments/R2_BLUEPRINT_LIBRARY_V1_PREREGISTRATION.md) | Frozen V1 schema, metrics, and thresholds |
+| [R2 Blueprint Library result](docs/experiments/R2_BLUEPRINT_LIBRARY_V1_AUTOMATED_RESULT.md) | Implementation, machine gates, and current verdict |
+| [R2 behavioral evidence protocol](docs/experiments/R2_BLUEPRINT_LIBRARY_V1_BEHAVIORAL_PROTOCOL.md) | Evidence collection and report procedure |
 | [World and terminology](docs/WORLD_AND_TERMINOLOGY.md) | Canonical player-facing vocabulary |
 | [Gravity Depth V0 specification](docs/experiments/GRAVITY_DEPTH_V0_SPEC.md) | Current isolated vertical slice |
 | [Mobile expedition information specification](docs/visual/EXPEDITION_MOBILE_MVP_INFORMATION_SPEC.md) | Expedition telemetry layout contract |

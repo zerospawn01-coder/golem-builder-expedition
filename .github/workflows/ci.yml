@@ -45,3 +45,6 @@ jobs:
 
       - name: Verify fabrication transaction
         run: pnpm verify:fabrication
+
+      - name: Verify R2 Blueprint Library gates
+        run: pnpm verify:r2-blueprints

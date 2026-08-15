@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Hammer, Zap, Shield, Sparkles, CheckCircle2, AlertTriangle, RefreshCw, Compass, Footprints, Pickaxe, Info, Lock, Check, Eye } from 'lucide-react';
 import { BodyType, CoreType, RuneType, MaterialCount, Golem, TraitType } from '../types';
 import {
@@ -14,25 +14,42 @@ import {
 } from '../data/gameData';
 import { GolemVisual } from './GolemVisual';
 import { soundFx } from '../utils/audio';
+import {
+  BLUEPRINT_PURPOSE_TAG_OPTIONS,
+  resolveBlueprint,
+  type Blueprint,
+  type BlueprintPartIds,
+  type BlueprintSource,
+} from '../domain/blueprintLibrary';
 
 interface WorkshopViewProps {
   inventory: MaterialCount;
   discoveredTraits: TraitType[];
-  onBuildGolem: (golem: Golem) => void;
+  onFabricateGolem: (parts: BlueprintPartIds, source: BlueprintSource, blueprintId?: string) => Golem | null;
   onGoToExpedition: () => void;
   canAct: boolean;
   golemCount: number;
   maxGolems: number;
+  blueprints: Blueprint[];
+  onSaveBlueprint: (parts: BlueprintPartIds, purposeTagIds: string[], loadedBlueprintId?: string) => void;
+  onBlueprintLoaded: (blueprintId: string) => void;
+  onBlueprintApplied: (blueprintId: string) => void;
+  onBlueprintModified: (blueprintId: string) => void;
 }
 
 export const WorkshopView: React.FC<WorkshopViewProps> = ({
   inventory,
   discoveredTraits,
-  onBuildGolem,
+  onFabricateGolem,
   onGoToExpedition,
   canAct,
   golemCount,
   maxGolems,
+  blueprints,
+  onSaveBlueprint,
+  onBlueprintLoaded,
+  onBlueprintApplied,
+  onBlueprintModified,
 }) => {
   // Selection states
   const [selectedBody, setSelectedBody] = useState<BodyType>('stone');
@@ -40,6 +57,10 @@ export const WorkshopView: React.FC<WorkshopViewProps> = ({
   const [selectedRune, setSelectedRune] = useState<RuneType>('attack');
   const [targetRegionId, setTargetRegionId] = useState<string>('region_quarry');
   const [showSynergyGuide, setShowSynergyGuide] = useState<boolean>(false);
+  const [loadedBlueprintId, setLoadedBlueprintId] = useState<string | undefined>();
+  const [blueprintModified, setBlueprintModified] = useState(false);
+  const [selectedPurposeTagIds, setSelectedPurposeTagIds] = useState<string[]>(['GENERAL']);
+  const [blueprintLoadError, setBlueprintLoadError] = useState<string | null>(null);
 
   // Animation states
   const [isBuilding, setIsBuilding] = useState(false);
@@ -57,6 +78,48 @@ export const WorkshopView: React.FC<WorkshopViewProps> = ({
   const projectedTraits = getGolemTraits(selectedBody, selectedCore, selectedRune);
   const projectedName = generateGolemName(selectedBody, selectedCore, selectedRune);
 
+  useEffect(() => {
+    if (!loadedBlueprintId || blueprintModified) return;
+    const loaded = blueprints.find((item) => item.blueprint_id === loadedBlueprintId);
+    if (!loaded) return;
+    const partsChanged = loaded.part_ids.frame_id !== selectedBody || loaded.part_ids.reactor_id !== selectedCore || loaded.part_ids.control_sigil_id !== selectedRune;
+    const purposeChanged = loaded.purpose_tag_ids.length !== selectedPurposeTagIds.length
+      || loaded.purpose_tag_ids.some((tagId) => !selectedPurposeTagIds.includes(tagId));
+    const changed = partsChanged || purposeChanged;
+    if (changed) {
+      setBlueprintModified(true);
+      onBlueprintModified(loadedBlueprintId);
+    }
+  }, [selectedBody, selectedCore, selectedRune, selectedPurposeTagIds, loadedBlueprintId, blueprintModified, blueprints, onBlueprintModified]);
+
+  const loadBlueprint = (blueprint: Blueprint) => {
+    const resolution = resolveBlueprint({ version: 1, blueprints }, blueprint.blueprint_id);
+    if (resolution.ok === false) {
+      setBlueprintLoadError(`REFERENCE UNAVAILABLE: ${resolution.unavailableIds.join(', ')}`);
+      return;
+    }
+    setSelectedBody(resolution.design.frame_id);
+    setSelectedCore(resolution.design.reactor_id);
+    setSelectedRune(resolution.design.control_sigil_id);
+    setSelectedPurposeTagIds(resolution.blueprint.purpose_tag_ids.length ? resolution.blueprint.purpose_tag_ids : ['GENERAL']);
+    setLoadedBlueprintId(resolution.blueprint.blueprint_id);
+    setBlueprintModified(false);
+    setBlueprintLoadError(null);
+    onBlueprintLoaded(resolution.blueprint.blueprint_id);
+    onBlueprintApplied(resolution.blueprint.blueprint_id);
+  };
+
+  const togglePurposeTag = (tagId: string) => {
+    setSelectedPurposeTagIds((current) => {
+      if (tagId === 'GENERAL') return ['GENERAL'];
+      const withoutGeneral = current.filter((id) => id !== 'GENERAL');
+      const next = withoutGeneral.includes(tagId)
+        ? withoutGeneral.filter((id) => id !== tagId)
+        : [...withoutGeneral, tagId];
+      return next.length ? next : ['GENERAL'];
+    });
+  };
+
   // Target Region Assessment Simulation Engine
   const targetRegion = EXPEDITION_REGIONS.find((r) => r.id === targetRegionId) || EXPEDITION_REGIONS[0];
   const prediction = predictExpeditionOutcome(targetRegion, projectedStats, projectedTraits);
@@ -69,22 +132,13 @@ export const WorkshopView: React.FC<WorkshopViewProps> = ({
     setBuiltSuccessGolem(null);
 
     setTimeout(() => {
-      const newGolem: Golem = {
-        id: `golem_${Date.now()}`,
-        name: projectedName,
-        body: selectedBody,
-        core: selectedCore,
-        rune: selectedRune,
-        stats: projectedStats,
-        traits: projectedTraits,
-        createdAt: Date.now(),
-        expeditionsCount: 0,
-        durability: 100,
-      };
-
+      const fabricated = onFabricateGolem(
+        { frame_id: selectedBody, reactor_id: selectedCore, control_sigil_id: selectedRune },
+        loadedBlueprintId ? (blueprintModified ? 'BLUEPRINT_MODIFIED' : 'BLUEPRINT_DIRECT') : 'MANUAL_NEW',
+        loadedBlueprintId,
+      );
       setIsBuilding(false);
-      setBuiltSuccessGolem(newGolem);
-      onBuildGolem(newGolem);
+      setBuiltSuccessGolem(fabricated);
     }, 900);
   };
 
@@ -140,6 +194,48 @@ export const WorkshopView: React.FC<WorkshopViewProps> = ({
           </div>
         </div>
       </div>
+
+      <section className="bg-[#121417] border border-cyan-700/40 p-4 rounded-xs font-mono space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div className="text-[10px] text-cyan-400 tracking-widest">R2_BLUEPRINT_LIBRARY / CANONICAL HOLD</div>
+            <h3 className="text-sm font-bold text-[#E0E2E4]">設計知ライブラリ</h3>
+            <div className="text-[10px] text-[#8A8F98]">PART IDS ONLY · BLUEPRINT ≠ UNIT · SAVE/LOAD COST 0</div>
+          </div>
+          <div className="flex gap-2">
+            {loadedBlueprintId && blueprintModified && <button onClick={() => { onSaveBlueprint({ frame_id: selectedBody, reactor_id: selectedCore, control_sigil_id: selectedRune }, selectedPurposeTagIds, loadedBlueprintId); setBlueprintModified(false); }} className="px-3 py-1.5 text-xs border border-cyan-600 text-cyan-300">UPDATE LOADED</button>}
+            <button onClick={() => onSaveBlueprint({ frame_id: selectedBody, reactor_id: selectedCore, control_sigil_id: selectedRune }, selectedPurposeTagIds)} className="px-3 py-1.5 text-xs border border-cyan-600 text-cyan-300">SAVE AS NEW</button>
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <div className="text-[10px] text-[#8A8F98]">INTENDED USE · DESIGN KNOWLEDGE ONLY · NO GAMEPLAY EFFECT</div>
+          <div className="flex flex-wrap gap-1.5">
+            {BLUEPRINT_PURPOSE_TAG_OPTIONS.map((tag) => {
+              const selected = selectedPurposeTagIds.includes(tag.id);
+              return (
+                <button
+                  key={tag.id}
+                  type="button"
+                  title={tag.description}
+                  aria-pressed={selected}
+                  onClick={() => togglePurposeTag(tag.id)}
+                  className={`px-2 py-1 text-[10px] border ${selected ? 'border-cyan-500 bg-cyan-950/50 text-cyan-200' : 'border-[#2D3135] text-[#8A8F98]'}`}
+                >
+                  {tag.label} / {tag.id}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        {loadedBlueprintId && <div className="text-[10px] text-cyan-300">{blueprintModified ? 'MODIFIED AFTER LOAD' : `LOADED / APPLIED: ${loadedBlueprintId}`}</div>}
+        {blueprintLoadError && <div role="alert" className="text-[10px] text-rose-300 border border-rose-800/70 bg-rose-950/30 px-2 py-1.5">{blueprintLoadError}</div>}
+        {blueprints.length === 0 ? <div className="text-xs text-[#596069]">NO SAVED BLUEPRINTS</div> : <div className="grid md:grid-cols-2 gap-2">{blueprints.map((blueprint) => (
+          <div key={blueprint.blueprint_id} className="border border-[#2D3135] p-2 flex items-center justify-between gap-2 text-xs">
+            <div className="min-w-0"><strong className="break-all">{blueprint.blueprint_id}</strong><div className="text-[10px] text-[#8A8F98]">{blueprint.part_ids.frame_id} / {blueprint.part_ids.reactor_id} / {blueprint.part_ids.control_sigil_id}</div><div className="text-[9px] text-cyan-400 mt-1">{blueprint.purpose_tag_ids.length ? blueprint.purpose_tag_ids.join(' · ') : 'GENERAL'}</div></div>
+            <button onClick={() => loadBlueprint(blueprint)} className="px-2 py-1 border border-[#596069] text-[#B8BDC4]">LOAD</button>
+          </div>
+        ))}</div>}
+      </section>
 
       {/* Synergy Recipe Guide Modal/Drawer (Discovery based) */}
       {showSynergyGuide && (

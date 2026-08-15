@@ -26,6 +26,9 @@ When documents disagree, use this order:
 | Document | Status |
 |---|---|
 | [`experiments/GRAVITY_DEPTH_V0_SPEC.md`](experiments/GRAVITY_DEPTH_V0_SPEC.md) | Non-canonical vertical slice; product integration in progress |
+| [`experiments/R2_BLUEPRINT_LIBRARY_V1_PREREGISTRATION.md`](experiments/R2_BLUEPRINT_LIBRARY_V1_PREREGISTRATION.md) | Frozen V1 schema, telemetry, metrics, and thresholds |
+| [`experiments/R2_BLUEPRINT_LIBRARY_V1_AUTOMATED_RESULT.md`](experiments/R2_BLUEPRINT_LIBRARY_V1_AUTOMATED_RESULT.md) | Implementation complete; machine PASS; behavioral evidence insufficient |
+| [`experiments/R2_BLUEPRINT_LIBRARY_V1_BEHAVIORAL_PROTOCOL.md`](experiments/R2_BLUEPRINT_LIBRARY_V1_BEHAVIORAL_PROTOCOL.md) | Human evidence collection and reporting procedure |
 | [`experiments/EXP_MULTI_PATH_RUINS_V1_RESULT.md`](experiments/EXP_MULTI_PATH_RUINS_V1_RESULT.md) | Failed candidate; canonical HOLD |
 | [`../EXPERIMENT_RUINS.md`](../EXPERIMENT_RUINS.md) | Historical Ancient Ruins A/B/C comparison |
 | [`../MAINTENANCE_EXPERIMENT.md`](../MAINTENANCE_EXPERIMENT.md) | Historical maintenance comparison |

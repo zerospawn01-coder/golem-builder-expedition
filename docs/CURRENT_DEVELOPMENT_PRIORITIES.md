@@ -25,7 +25,8 @@ RELEASE READY    NO
 - Keep Blueprint, fabricated UNIT, and future RESERVE concepts distinct.
 - Preserve normal material and ACTION costs when fabricating from a Blueprint.
 - Do not add RESERVE HANGAR as part of this work.
-- Freeze the R2 V1 schema, telemetry meaning, behavioral metrics, and thresholds while collecting the preregistered sample.
+- Freeze the calibrated R2 V1 schema, opportunity semantics, behavioral metrics, and thresholds after PR review and main integration.
+- Do not begin Behavioral collection with telemetry from the uncalibrated PR revision.
 - Do not promote R2 V1 from `CANONICAL HOLD` until at least 30 eligible save opportunities and 30 eligible redeploy decisions have been observed.
 
 ### P1 — Gravity Depth product presentation
@@ -96,7 +97,9 @@ VERDICT             PROMISING
 IMPLEMENTATION      COMPLETE
 MACHINE GATES       PASS
 BEHAVIORAL          INSUFFICIENT EVIDENCE
-NEXT                PREREGISTERED EVIDENCE COLLECTION
+METRIC CALIBRATION  PASS / AWAITING PR RE-REVIEW
+COLLECTION          NOT STARTED
+NEXT                PR REVIEW -> MAIN -> EVIDENCE COLLECTION
 CANONICAL           HOLD
 ```
 

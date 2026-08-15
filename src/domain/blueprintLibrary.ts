@@ -46,6 +46,16 @@ export type BlueprintTelemetryEvent =
   | { type: 'redeploy_decision'; opportunity_id: string; blueprint_available: boolean }
   | { type: 'expedition_started'; source: BlueprintSource; opportunity_id: string; blueprint_id?: string };
 
+export interface BlueprintMetrics {
+  save_rate: number | null;
+  reuse_rate: number | null;
+  median_time_to_first_reuse: number | null;
+  blueprint_redeploy_rate: number | null;
+  modified_resave_rate: number | null;
+  eligible_save_opportunities: number;
+  eligible_redeploy_decisions: number;
+}
+
 export const EMPTY_BLUEPRINT_LIBRARY: BlueprintLibraryState = { version: R2_BLUEPRINT_STORAGE_VERSION, blueprints: [] };
 
 function cloneBlueprint(blueprint: Blueprint): Blueprint {
@@ -119,27 +129,136 @@ export function deserializeBlueprintLibrary(raw: string | null): BlueprintLibrar
   return { version: 1, blueprints };
 }
 
-export function calculateBlueprintMetrics(events: readonly BlueprintTelemetryEvent[]) {
-  const saveOpportunities = new Set(events.filter((event): event is Extract<BlueprintTelemetryEvent, { type: 'blueprint_save_opportunity' }> => event.type === 'blueprint_save_opportunity').map(({ opportunity_id }) => opportunity_id));
-  const savedOpportunities = new Set(events.filter((event): event is Extract<BlueprintTelemetryEvent, { type: 'blueprint_saved' }> => event.type === 'blueprint_saved').map(({ opportunity_id }) => opportunity_id));
-  const savedBlueprints = new Set(events.filter((event): event is Extract<BlueprintTelemetryEvent, { type: 'blueprint_saved' }> => event.type === 'blueprint_saved').map(({ blueprint_id }) => blueprint_id));
-  const applied = events.filter((event): event is Extract<BlueprintTelemetryEvent, { type: 'blueprint_applied' }> => event.type === 'blueprint_applied');
-  const reusedBlueprints = new Set(applied.map(({ blueprint_id }) => blueprint_id));
-  const redeploy = events.filter((event): event is Extract<BlueprintTelemetryEvent, { type: 'redeploy_decision' }> => event.type === 'redeploy_decision' && event.blueprint_available);
-  const assisted = events.filter((event): event is Extract<BlueprintTelemetryEvent, { type: 'expedition_started' }> => event.type === 'expedition_started' && event.source !== 'MANUAL_NEW');
+const opportunityDefinitionTypes = new Set<BlueprintTelemetryEvent['type']>([
+  'blueprint_save_opportunity',
+  'blueprint_load_opportunity',
+  'redeploy_decision',
+]);
+
+function sameOpportunityDefinition(left: BlueprintTelemetryEvent, right: BlueprintTelemetryEvent): boolean {
+  if (left.type !== right.type || !('opportunity_id' in left) || !('opportunity_id' in right)) return false;
+  if (left.opportunity_id !== right.opportunity_id) return false;
+  if (left.type === 'redeploy_decision' && right.type === 'redeploy_decision') {
+    return left.blueprint_available === right.blueprint_available;
+  }
+  return true;
+}
+
+export function appendBlueprintTelemetryEvent(
+  events: readonly BlueprintTelemetryEvent[],
+  event: BlueprintTelemetryEvent,
+): BlueprintTelemetryEvent[] {
+  if (opportunityDefinitionTypes.has(event.type) && 'opportunity_id' in event) {
+    const existing = events.find((candidate) => opportunityDefinitionTypes.has(candidate.type)
+      && 'opportunity_id' in candidate
+      && candidate.opportunity_id === event.opportunity_id);
+    if (existing) {
+      if (sameOpportunityDefinition(existing, event)) return [...events];
+      throw new Error(`DUPLICATE_OPPORTUNITY_ID: ${event.opportunity_id}`);
+    }
+  }
+  return [...events, event];
+}
+
+export function countEligibleRedeployOpportunities(events: readonly BlueprintTelemetryEvent[]): number {
+  return new Set(events.filter(
+    (event): event is Extract<BlueprintTelemetryEvent, { type: 'redeploy_decision' }> => event.type === 'redeploy_decision' && event.blueprint_available,
+  ).map(({ opportunity_id }) => opportunity_id)).size;
+}
+
+export function assertBlueprintMetricInvariants(metrics: BlueprintMetrics): void {
+  for (const [name, value] of [
+    ['save_rate', metrics.save_rate],
+    ['reuse_rate', metrics.reuse_rate],
+    ['blueprint_redeploy_rate', metrics.blueprint_redeploy_rate],
+  ] as const) {
+    if (value !== null && (value < 0 || value > 1)) throw new Error(`INVALID_METRIC_RANGE: ${name}`);
+  }
+  if (metrics.median_time_to_first_reuse !== null && metrics.median_time_to_first_reuse < 0) {
+    throw new Error('INVALID_METRIC_RANGE: median_time_to_first_reuse');
+  }
+}
+
+export function calculateBlueprintMetrics(events: readonly BlueprintTelemetryEvent[]): BlueprintMetrics {
+  const opportunityDefinitions = new Map<string, BlueprintTelemetryEvent>();
+  for (const event of events) {
+    if (!opportunityDefinitionTypes.has(event.type) || !('opportunity_id' in event)) continue;
+    const existing = opportunityDefinitions.get(event.opportunity_id);
+    if (existing && !sameOpportunityDefinition(existing, event)) {
+      throw new Error(`DUPLICATE_OPPORTUNITY_ID: ${event.opportunity_id}`);
+    }
+    if (!existing) opportunityDefinitions.set(event.opportunity_id, event);
+  }
+
+  const saveOpportunities = new Set<string>();
+  const savedOpportunities = new Set<string>();
+  const savedOpportunityBlueprint = new Map<string, string>();
+  const savedBlueprints = new Map<string, { eventIndex: number; eligibleRedeployIndex: number }>();
+  const reusedBlueprints = new Set<string>();
+  const firstReuse: number[] = [];
+  const eligibleRedeploy = new Map<string, Extract<BlueprintTelemetryEvent, { type: 'redeploy_decision' }>>();
+  const finalRedeployDecision = new Map<string, Extract<BlueprintTelemetryEvent, { type: 'expedition_started' }>>();
+
+  events.forEach((event, eventIndex) => {
+    if (event.type === 'blueprint_save_opportunity') {
+      saveOpportunities.add(event.opportunity_id);
+      return;
+    }
+    if (event.type === 'redeploy_decision') {
+      if (event.blueprint_available && !eligibleRedeploy.has(event.opportunity_id)) eligibleRedeploy.set(event.opportunity_id, event);
+      return;
+    }
+    if (event.type === 'blueprint_saved') {
+      if (!saveOpportunities.has(event.opportunity_id)) {
+        throw new Error(`UNKNOWN_SAVE_OPPORTUNITY: ${event.opportunity_id}`);
+      }
+      const existingBlueprintId = savedOpportunityBlueprint.get(event.opportunity_id);
+      if (existingBlueprintId && existingBlueprintId !== event.blueprint_id) {
+        throw new Error(`CONFLICTING_SAVE_RESULT: ${event.opportunity_id}`);
+      }
+      savedOpportunityBlueprint.set(event.opportunity_id, event.blueprint_id);
+      savedOpportunities.add(event.opportunity_id);
+      if (!savedBlueprints.has(event.blueprint_id)) {
+        savedBlueprints.set(event.blueprint_id, {
+          eventIndex,
+          eligibleRedeployIndex: eligibleRedeploy.size,
+        });
+      }
+      return;
+    }
+    if (event.type === 'blueprint_applied') {
+      const savedAt = savedBlueprints.get(event.blueprint_id);
+      if (!savedAt || eventIndex <= savedAt.eventIndex || reusedBlueprints.has(event.blueprint_id)) return;
+      if (event.opportunity_index !== eligibleRedeploy.size || event.opportunity_index < savedAt.eligibleRedeployIndex) {
+        throw new Error(`INVALID_REUSE_OPPORTUNITY_INDEX: ${event.blueprint_id}`);
+      }
+      reusedBlueprints.add(event.blueprint_id);
+      firstReuse.push(event.opportunity_index - savedAt.eligibleRedeployIndex);
+      return;
+    }
+    if (event.type === 'expedition_started' && eligibleRedeploy.has(event.opportunity_id)) {
+      finalRedeployDecision.set(event.opportunity_id, event);
+    }
+  });
+
+  const assistedRedeployOpportunities = [...finalRedeployDecision.entries()].filter(([opportunityId, event]) => (
+    eligibleRedeploy.has(opportunityId) && event.source !== 'MANUAL_NEW'
+  )).length;
   const modified = events.filter((event) => event.type === 'blueprint_modified').length;
   const resaved = events.filter((event) => event.type === 'blueprint_resaved').length;
-  const firstReuse = [...savedBlueprints].map((id) => applied.find(({ blueprint_id }) => blueprint_id === id)?.opportunity_index).filter((value): value is number => value !== undefined).sort((a, b) => a - b);
+  firstReuse.sort((a, b) => a - b);
   const median = firstReuse.length ? firstReuse[Math.floor((firstReuse.length - 1) / 2)] : null;
-  return {
+  const metrics: BlueprintMetrics = {
     save_rate: saveOpportunities.size ? savedOpportunities.size / saveOpportunities.size : null,
     reuse_rate: savedBlueprints.size ? reusedBlueprints.size / savedBlueprints.size : null,
     median_time_to_first_reuse: median,
-    blueprint_redeploy_rate: redeploy.length ? assisted.length / redeploy.length : null,
+    blueprint_redeploy_rate: eligibleRedeploy.size ? assistedRedeployOpportunities / eligibleRedeploy.size : null,
     modified_resave_rate: modified ? resaved / modified : null,
     eligible_save_opportunities: saveOpportunities.size,
-    eligible_redeploy_decisions: redeploy.length,
+    eligible_redeploy_decisions: eligibleRedeploy.size,
   };
+  assertBlueprintMetricInvariants(metrics);
+  return metrics;
 }
 
 export function assessBlueprintBehavioralEvidence(events: readonly BlueprintTelemetryEvent[]) {

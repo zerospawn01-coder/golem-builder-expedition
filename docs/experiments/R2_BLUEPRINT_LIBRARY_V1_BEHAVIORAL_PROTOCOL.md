@@ -3,6 +3,8 @@
 ```text
 IMPLEMENTATION   COMPLETE
 MACHINE GATES    PASS
+CALIBRATION      PASS
+COLLECTION       NOT STARTED
 BEHAVIORAL       INSUFFICIENT EVIDENCE
 CANONICAL        HOLD
 ```
@@ -13,6 +15,7 @@ This protocol operationalizes the frozen V1 preregistration. It does not change 
 
 - Count player behavior from coherent end-to-end play sessions.
 - Do not count automated verification, scripted browser checks, or fabricated telemetry as behavioral evidence.
+- Do not count telemetry produced by the uncalibrated PR revision.
 - Keep the implementation frozen while collecting the required sample.
 - If schema, telemetry meaning, metric definitions, or thresholds must change, preserve the V1 result and preregister V2.
 
@@ -24,6 +27,21 @@ eligible redeploy decisions  >= 30
 ```
 
 Anything below either minimum produces `INSUFFICIENT EVIDENCE`, not `FAIL`.
+
+## Collection readiness gate
+
+Collection may change from `NOT STARTED` to `READY` only when all of the following are true:
+
+```text
+PR metric review addressed        PASS
+R2-BEH-01–05                      PASS
+all machine regression            PASS
+GitHub Actions                    PASS
+calibrated revision on main       PASS
+fresh telemetry session           READY
+```
+
+Until then, main merge and Behavioral collection remain separate decisions. Merging the calibrated implementation does not remove `CANONICAL HOLD`.
 
 ## Frozen PASS conditions
 

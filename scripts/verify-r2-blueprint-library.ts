@@ -3,13 +3,16 @@ import { calculateGolemStats, evaluateExpeditionDamage, EXPEDITION_REGIONS, getG
 import { fabricateGolem, type CanonicalFabricationState } from '../src/domain/fabrication';
 import {
   EMPTY_BLUEPRINT_LIBRARY,
+  appendBlueprintTelemetryEvent,
   assessBlueprintBehavioralEvidence,
+  assertBlueprintMetricInvariants,
   calculateBlueprintMetrics,
   deserializeBlueprintLibrary,
   resolveBlueprint,
   saveBlueprint,
   serializeBlueprintLibrary,
   type Blueprint,
+  type BlueprintTelemetryEvent,
 } from '../src/domain/blueprintLibrary';
 
 const blueprint: Blueprint = {
@@ -132,13 +135,94 @@ assert.equal(metrics.eligible_save_opportunities, 0);
 assert.equal(metrics.eligible_redeploy_decisions, 0);
 assert.equal(assessBlueprintBehavioralEvidence([]).verdict, 'INSUFFICIENT EVIDENCE');
 
-const thresholdEvents = [
-  ...Array.from({ length: 30 }, (_, index) => ({ type: 'blueprint_save_opportunity' as const, opportunity_id: `save-${index}` })),
-  ...Array.from({ length: 10 }, (_, index) => ({ type: 'blueprint_saved' as const, blueprint_id: `blueprint-${index}`, opportunity_id: `save-${index}` })),
-  ...Array.from({ length: 3 }, (_, index) => ({ type: 'blueprint_applied' as const, blueprint_id: `blueprint-${index}`, opportunity_index: index + 1 })),
-  ...Array.from({ length: 30 }, (_, index) => ({ type: 'redeploy_decision' as const, opportunity_id: `redeploy-${index}`, blueprint_available: true })),
-  ...Array.from({ length: 9 }, (_, index) => ({ type: 'expedition_started' as const, opportunity_id: `redeploy-${index}`, source: 'BLUEPRINT_DIRECT' as const, blueprint_id: `blueprint-${index % 3}` })),
+// R2-BEH-01: eligible opportunities are emitted independently from actual saves.
+const saveRateEvents: BlueprintTelemetryEvent[] = Array.from({ length: 10 }, (_, index) => ({
+  type: 'blueprint_save_opportunity', opportunity_id: `beh-01-save-${index}`,
+}));
+for (let index = 0; index < 3; index += 1) {
+  saveRateEvents.push({ type: 'blueprint_saved', blueprint_id: `beh-01-blueprint-${index}`, opportunity_id: `beh-01-save-${index}` });
+}
+assert.equal(calculateBlueprintMetrics(saveRateEvents).save_rate, 0.3, 'R2-BEH-01');
+
+// R2-BEH-02: reuse time is relative to the Blueprint save point, not the global index.
+const reuseDeltaEvents: BlueprintTelemetryEvent[] = [];
+for (let index = 1; index <= 40; index += 1) {
+  reuseDeltaEvents.push({ type: 'redeploy_decision', opportunity_id: `beh-02-redeploy-${index}`, blueprint_available: true });
+  reuseDeltaEvents.push({ type: 'expedition_started', opportunity_id: `beh-02-redeploy-${index}`, source: 'MANUAL_NEW' });
+}
+reuseDeltaEvents.push({ type: 'blueprint_save_opportunity', opportunity_id: 'beh-02-save' });
+reuseDeltaEvents.push({ type: 'blueprint_saved', blueprint_id: 'beh-02-blueprint', opportunity_id: 'beh-02-save' });
+for (let index = 41; index <= 42; index += 1) {
+  reuseDeltaEvents.push({ type: 'redeploy_decision', opportunity_id: `beh-02-redeploy-${index}`, blueprint_available: true });
+  reuseDeltaEvents.push({ type: 'expedition_started', opportunity_id: `beh-02-redeploy-${index}`, source: 'MANUAL_NEW' });
+}
+reuseDeltaEvents.push({ type: 'blueprint_applied', blueprint_id: 'beh-02-blueprint', opportunity_index: 42 });
+assert.equal(calculateBlueprintMetrics(reuseDeltaEvents).median_time_to_first_reuse, 2, 'R2-BEH-02');
+
+// R2-BEH-03: numerator and denominator share one redeploy opportunity domain.
+const redeployRateEvents: BlueprintTelemetryEvent[] = [];
+const redeploySources = [
+  ...Array.from({ length: 3 }, () => 'BLUEPRINT_DIRECT' as const),
+  ...Array.from({ length: 2 }, () => 'BLUEPRINT_MODIFIED' as const),
+  ...Array.from({ length: 5 }, () => 'MANUAL_NEW' as const),
 ];
+redeploySources.forEach((source, index) => {
+  const opportunityId = `beh-03-redeploy-${index}`;
+  redeployRateEvents.push({ type: 'redeploy_decision', opportunity_id: opportunityId, blueprint_available: true });
+  redeployRateEvents.push({ type: 'expedition_started', opportunity_id: opportunityId, source });
+});
+assert.equal(calculateBlueprintMetrics(redeployRateEvents).blueprint_redeploy_rate, 0.5, 'R2-BEH-03');
+
+// R2-BEH-04: duplicates and multiple result events count once by opportunity ID.
+const duplicateEvents: BlueprintTelemetryEvent[] = [
+  { type: 'redeploy_decision', opportunity_id: 'beh-04-redeploy', blueprint_available: true },
+  { type: 'redeploy_decision', opportunity_id: 'beh-04-redeploy', blueprint_available: true },
+  { type: 'expedition_started', opportunity_id: 'beh-04-redeploy', source: 'BLUEPRINT_DIRECT' },
+  { type: 'expedition_started', opportunity_id: 'beh-04-redeploy', source: 'BLUEPRINT_MODIFIED' },
+  { type: 'redeploy_decision', opportunity_id: 'beh-04-final-manual', blueprint_available: true },
+  { type: 'expedition_started', opportunity_id: 'beh-04-final-manual', source: 'BLUEPRINT_DIRECT' },
+  { type: 'expedition_started', opportunity_id: 'beh-04-final-manual', source: 'MANUAL_NEW' },
+  { type: 'expedition_started', opportunity_id: 'unrelated-redeploy', source: 'BLUEPRINT_DIRECT' },
+];
+const duplicateMetrics = calculateBlueprintMetrics(duplicateEvents);
+assert.equal(duplicateMetrics.eligible_redeploy_decisions, 2, 'R2-BEH-04 denominator');
+assert.equal(duplicateMetrics.blueprint_redeploy_rate, 0.5, 'R2-BEH-04 final decision');
+
+// R2-BEH-05: impossible metric values fail closed.
+assert.throws(() => assertBlueprintMetricInvariants({
+  ...duplicateMetrics,
+  blueprint_redeploy_rate: 1.01,
+}), /INVALID_METRIC_RANGE: blueprint_redeploy_rate/, 'R2-BEH-05');
+assert.ok((duplicateMetrics.blueprint_redeploy_rate ?? 0) <= 1, 'R2-BEH-05 calculated invariant');
+
+const oneSaveOpportunity: BlueprintTelemetryEvent = { type: 'blueprint_save_opportunity', opportunity_id: 'stable-save-opportunity' };
+const appendedOnce = appendBlueprintTelemetryEvent([], oneSaveOpportunity);
+const appendedDuplicate = appendBlueprintTelemetryEvent(appendedOnce, oneSaveOpportunity);
+assert.equal(appendedDuplicate.length, 1, 'duplicate opportunity event was not ignored');
+assert.throws(() => appendBlueprintTelemetryEvent(appendedOnce, {
+  type: 'redeploy_decision', opportunity_id: 'stable-save-opportunity', blueprint_available: true,
+}), /DUPLICATE_OPPORTUNITY_ID/, 'conflicting opportunity ID was not rejected');
+assert.throws(() => calculateBlueprintMetrics([
+  { type: 'redeploy_decision', opportunity_id: 'conflicting-redeploy', blueprint_available: false },
+  { type: 'redeploy_decision', opportunity_id: 'conflicting-redeploy', blueprint_available: true },
+]), /DUPLICATE_OPPORTUNITY_ID/, 'conflicting raw opportunity definitions were not rejected');
+
+const thresholdEvents: BlueprintTelemetryEvent[] = [];
+for (let index = 0; index < 30; index += 1) {
+  thresholdEvents.push({ type: 'blueprint_save_opportunity', opportunity_id: `save-${index}` });
+  if (index < 10) thresholdEvents.push({ type: 'blueprint_saved', blueprint_id: `blueprint-${index}`, opportunity_id: `save-${index}` });
+}
+for (let index = 0; index < 30; index += 1) {
+  const opportunityId = `redeploy-${index}`;
+  thresholdEvents.push({ type: 'redeploy_decision', opportunity_id: opportunityId, blueprint_available: true });
+  thresholdEvents.push({
+    type: 'expedition_started',
+    opportunity_id: opportunityId,
+    source: index < 9 ? 'BLUEPRINT_DIRECT' : 'MANUAL_NEW',
+    blueprint_id: index < 9 ? `blueprint-${index % 3}` : undefined,
+  });
+  if (index < 3) thresholdEvents.push({ type: 'blueprint_applied', blueprint_id: `blueprint-${index}`, opportunity_index: index + 1 });
+}
 const thresholdMetrics = calculateBlueprintMetrics(thresholdEvents);
 assert.equal(thresholdMetrics.eligible_save_opportunities, 30);
 assert.equal(thresholdMetrics.eligible_redeploy_decisions, 30);
@@ -149,14 +233,24 @@ assert.equal(assessBlueprintBehavioralEvidence(thresholdEvents).verdict, 'PASS â
 
 const rejectedEvents = [
   ...Array.from({ length: 30 }, (_, index) => ({ type: 'blueprint_save_opportunity' as const, opportunity_id: `rejected-save-${index}` })),
-  ...Array.from({ length: 30 }, (_, index) => ({ type: 'redeploy_decision' as const, opportunity_id: `rejected-redeploy-${index}`, blueprint_available: true })),
+  ...Array.from({ length: 30 }, (_, index) => [
+    { type: 'redeploy_decision' as const, opportunity_id: `rejected-redeploy-${index}`, blueprint_available: true },
+    { type: 'expedition_started' as const, opportunity_id: `rejected-redeploy-${index}`, source: 'MANUAL_NEW' as const },
+  ]).flat(),
 ];
 assert.equal(assessBlueprintBehavioralEvidence(rejectedEvents).verdict, 'FAIL â€” REJECT');
 
 console.log(JSON.stringify({
   experiment: 'R2_BLUEPRINT_LIBRARY_V1',
   automated_gates: { actionability: 'PASS', persistence: 'PASS', state_isolation: 'PASS', regression: 'PASS' },
-  behavioral: 'NOT RUN',
+  behavioral_metric_regression: {
+    'R2-BEH-01_SAVE_RATE': 'PASS',
+    'R2-BEH-02_RELATIVE_REUSE': 'PASS',
+    'R2-BEH-03_REDEPLOY_JOIN': 'PASS',
+    'R2-BEH-04_DUPLICATE_ID': 'PASS',
+    'R2-BEH-05_METRIC_INVARIANT': 'PASS',
+  },
+  behavioral_collection: 'NOT STARTED',
   eligible_save_opportunities: 0,
   eligible_redeploy_decisions: 0,
   verdict: 'INSUFFICIENT EVIDENCE',

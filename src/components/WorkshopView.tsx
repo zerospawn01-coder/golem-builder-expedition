@@ -16,6 +16,7 @@ import { GolemVisual } from './GolemVisual';
 import { soundFx } from '../utils/audio';
 import {
   BLUEPRINT_PURPOSE_TAG_OPTIONS,
+  isLegalDesign,
   resolveBlueprint,
   type Blueprint,
   type BlueprintPartIds,
@@ -31,7 +32,8 @@ interface WorkshopViewProps {
   golemCount: number;
   maxGolems: number;
   blueprints: Blueprint[];
-  onSaveBlueprint: (parts: BlueprintPartIds, purposeTagIds: string[], loadedBlueprintId?: string) => void;
+  onSaveOpportunityPresented: (designSignature: string) => { opportunityId: string; alreadySaved: boolean };
+  onSaveBlueprint: (opportunityId: string, parts: BlueprintPartIds, purposeTagIds: string[], loadedBlueprintId?: string) => void;
   onBlueprintLoaded: (blueprintId: string) => void;
   onBlueprintApplied: (blueprintId: string) => void;
   onBlueprintModified: (blueprintId: string) => void;
@@ -46,6 +48,7 @@ export const WorkshopView: React.FC<WorkshopViewProps> = ({
   golemCount,
   maxGolems,
   blueprints,
+  onSaveOpportunityPresented,
   onSaveBlueprint,
   onBlueprintLoaded,
   onBlueprintApplied,
@@ -61,6 +64,7 @@ export const WorkshopView: React.FC<WorkshopViewProps> = ({
   const [blueprintModified, setBlueprintModified] = useState(false);
   const [selectedPurposeTagIds, setSelectedPurposeTagIds] = useState<string[]>(['GENERAL']);
   const [blueprintLoadError, setBlueprintLoadError] = useState<string | null>(null);
+  const [saveOpportunity, setSaveOpportunity] = useState<{ opportunityId: string; alreadySaved: boolean }>();
 
   // Animation states
   const [isBuilding, setIsBuilding] = useState(false);
@@ -77,6 +81,20 @@ export const WorkshopView: React.FC<WorkshopViewProps> = ({
   const projectedStats = calculateGolemStats(selectedBody, selectedCore, selectedRune);
   const projectedTraits = getGolemTraits(selectedBody, selectedCore, selectedRune);
   const projectedName = generateGolemName(selectedBody, selectedCore, selectedRune);
+
+  useEffect(() => {
+    const parts: BlueprintPartIds = {
+      frame_id: selectedBody,
+      reactor_id: selectedCore,
+      control_sigil_id: selectedRune,
+    };
+    if (!isLegalDesign(parts)) {
+      setSaveOpportunity(undefined);
+      return;
+    }
+    const designSignature = `${parts.frame_id}:${parts.reactor_id}:${parts.control_sigil_id}`;
+    setSaveOpportunity(onSaveOpportunityPresented(designSignature));
+  }, [selectedBody, selectedCore, selectedRune, onSaveOpportunityPresented]);
 
   useEffect(() => {
     if (!loadedBlueprintId || blueprintModified) return;
@@ -118,6 +136,18 @@ export const WorkshopView: React.FC<WorkshopViewProps> = ({
         : [...withoutGeneral, tagId];
       return next.length ? next : ['GENERAL'];
     });
+  };
+
+  const saveCurrentBlueprint = (loadedId?: string) => {
+    if (!saveOpportunity) return;
+    onSaveBlueprint(
+      saveOpportunity.opportunityId,
+      { frame_id: selectedBody, reactor_id: selectedCore, control_sigil_id: selectedRune },
+      selectedPurposeTagIds,
+      loadedId,
+    );
+    setSaveOpportunity({ ...saveOpportunity, alreadySaved: true });
+    if (loadedId) setBlueprintModified(false);
   };
 
   // Target Region Assessment Simulation Engine
@@ -203,8 +233,8 @@ export const WorkshopView: React.FC<WorkshopViewProps> = ({
             <div className="text-[10px] text-[#8A8F98]">PART IDS ONLY · BLUEPRINT ≠ UNIT · SAVE/LOAD COST 0</div>
           </div>
           <div className="flex gap-2">
-            {loadedBlueprintId && blueprintModified && <button onClick={() => { onSaveBlueprint({ frame_id: selectedBody, reactor_id: selectedCore, control_sigil_id: selectedRune }, selectedPurposeTagIds, loadedBlueprintId); setBlueprintModified(false); }} className="px-3 py-1.5 text-xs border border-cyan-600 text-cyan-300">UPDATE LOADED</button>}
-            <button onClick={() => onSaveBlueprint({ frame_id: selectedBody, reactor_id: selectedCore, control_sigil_id: selectedRune }, selectedPurposeTagIds)} className="px-3 py-1.5 text-xs border border-cyan-600 text-cyan-300">SAVE AS NEW</button>
+            {loadedBlueprintId && blueprintModified && <button onClick={() => saveCurrentBlueprint(loadedBlueprintId)} disabled={!saveOpportunity} className="px-3 py-1.5 text-xs border border-cyan-600 text-cyan-300 disabled:opacity-40">UPDATE LOADED</button>}
+            <button onClick={() => saveCurrentBlueprint()} disabled={!saveOpportunity || saveOpportunity.alreadySaved} className="px-3 py-1.5 text-xs border border-cyan-600 text-cyan-300 disabled:opacity-40">SAVE AS NEW</button>
           </div>
         </div>
         <div className="space-y-1.5">

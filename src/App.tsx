@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Header } from './components/Header';
 import { WorkshopView } from './components/WorkshopView';
 import { GolemView } from './components/GolemView';
@@ -23,6 +23,8 @@ import GravityDepthExperiment from './experiments/gravity-depth-v0/GravityDepthE
 import { fabricateGolem } from './domain/fabrication';
 import {
   EMPTY_BLUEPRINT_LIBRARY,
+  appendBlueprintTelemetryEvent,
+  countEligibleRedeployOpportunities,
   deserializeBlueprintLibrary,
   saveBlueprint,
   serializeBlueprintLibrary,
@@ -38,6 +40,10 @@ const R2_BLUEPRINT_STORAGE_KEY = 'golem_builder_r2_blueprints_v1';
 const R2_TELEMETRY_STORAGE_KEY = 'golem_builder_r2_telemetry_v1';
 const R2_UNIT_SOURCE_STORAGE_KEY = 'golem_builder_r2_unit_sources_v1';
 
+function createTelemetryId(prefix: string): string {
+  return `${prefix}-${globalThis.crypto.randomUUID()}`;
+}
+
 export default function App() {
   if (new URLSearchParams(window.location.search).get('experiment') === 'GRAVITY_DEPTH_V0') {
     return <GravityDepthExperiment />;
@@ -46,6 +52,7 @@ export default function App() {
 }
 
 function CanonicalApp() {
+  const activeSaveOpportunityRef = useRef<{ designSignature: string; opportunityId: string; saved: boolean } | null>(null);
   const [blueprintLibrary, setBlueprintLibrary] = useState(() => {
     try { return deserializeBlueprintLibrary(localStorage.getItem(R2_BLUEPRINT_STORAGE_KEY)); }
     catch { return EMPTY_BLUEPRINT_LIBRARY; }
@@ -58,6 +65,7 @@ function CanonicalApp() {
     try { return JSON.parse(localStorage.getItem(R2_UNIT_SOURCE_STORAGE_KEY) || '{}'); }
     catch { return {}; }
   });
+  const [r2MeasurementEpoch, setR2MeasurementEpoch] = useState(0);
   const [day, setDay] = useState(() => Number(localStorage.getItem(`${LOCAL_STORAGE_KEY}_day`)) || 1);
   const [actionsLeft, setActionsLeft] = useState(() => {
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_actions`);
@@ -155,12 +163,23 @@ function CanonicalApp() {
     localStorage.setItem(R2_UNIT_SOURCE_STORAGE_KEY, JSON.stringify(unitBlueprintSources));
   }, [blueprintLibrary, blueprintTelemetry, unitBlueprintSources]);
 
-  const recordBlueprintEvent = (event: BlueprintTelemetryEvent) => setBlueprintTelemetry((events) => [...events, event]);
+  const recordBlueprintEvent = useCallback((event: BlueprintTelemetryEvent) => {
+    setBlueprintTelemetry((events) => appendBlueprintTelemetryEvent(events, event));
+  }, []);
 
-  const handleSaveBlueprint = (parts: BlueprintPartIds, purposeTagIds: string[], loadedBlueprintId?: string) => {
-    const opportunityId = `save-opportunity-${Date.now()}`;
+  const handleSaveOpportunityPresented = useCallback((designSignature: string) => {
+    const active = activeSaveOpportunityRef.current;
+    if (active?.designSignature === designSignature) {
+      return { opportunityId: active.opportunityId, alreadySaved: active.saved };
+    }
+    const opportunityId = createTelemetryId('save-opportunity');
+    activeSaveOpportunityRef.current = { designSignature, opportunityId, saved: false };
     recordBlueprintEvent({ type: 'blueprint_save_opportunity', opportunity_id: opportunityId });
-    const blueprintId = loadedBlueprintId ?? `blueprint-${Date.now()}`;
+    return { opportunityId, alreadySaved: false };
+  }, [recordBlueprintEvent]);
+
+  const handleSaveBlueprint = (opportunityId: string, parts: BlueprintPartIds, purposeTagIds: string[], loadedBlueprintId?: string) => {
+    const blueprintId = loadedBlueprintId ?? createTelemetryId('blueprint');
     setBlueprintLibrary((state) => {
       const existing = loadedBlueprintId
         ? state.blueprints.find((blueprint) => blueprint.blueprint_id === loadedBlueprintId)
@@ -173,8 +192,31 @@ function CanonicalApp() {
       }, loadedBlueprintId ? 'UPDATE' : 'CREATE');
     });
     recordBlueprintEvent({ type: 'blueprint_saved', blueprint_id: blueprintId, opportunity_id: opportunityId });
+    if (activeSaveOpportunityRef.current?.opportunityId === opportunityId) {
+      activeSaveOpportunityRef.current.saved = true;
+    }
     if (loadedBlueprintId) recordBlueprintEvent({ type: 'blueprint_resaved', blueprint_id: loadedBlueprintId });
   };
+
+  const handleBlueprintLoaded = useCallback((blueprintId: string) => {
+    const opportunityId = createTelemetryId('load-opportunity');
+    setBlueprintTelemetry((events) => {
+      const withOpportunity = appendBlueprintTelemetryEvent(events, { type: 'blueprint_load_opportunity', opportunity_id: opportunityId });
+      return appendBlueprintTelemetryEvent(withOpportunity, { type: 'blueprint_loaded', blueprint_id: blueprintId, opportunity_id: opportunityId });
+    });
+  }, []);
+
+  const handleBlueprintApplied = useCallback((blueprintId: string) => {
+    setBlueprintTelemetry((events) => appendBlueprintTelemetryEvent(events, {
+      type: 'blueprint_applied',
+      blueprint_id: blueprintId,
+      opportunity_index: countEligibleRedeployOpportunities(events),
+    }));
+  }, []);
+
+  const handleBlueprintModified = useCallback((blueprintId: string) => {
+    recordBlueprintEvent({ type: 'blueprint_modified', blueprint_id: blueprintId });
+  }, [recordBlueprintEvent]);
 
   const consumeAction = () => {
     if (actionsLeft <= 0) return false;
@@ -338,6 +380,8 @@ function CanonicalApp() {
     setBlueprintLibrary(EMPTY_BLUEPRINT_LIBRARY);
     setBlueprintTelemetry([]);
     setUnitBlueprintSources({});
+    activeSaveOpportunityRef.current = null;
+    setR2MeasurementEpoch((epoch) => epoch + 1);
   };
 
   return (
@@ -362,6 +406,7 @@ function CanonicalApp() {
         </div>
         {currentTab === 'workshop' && (
           <WorkshopView
+            key={r2MeasurementEpoch}
             inventory={inventory}
             discoveredTraits={discoveredTraits}
             onFabricateGolem={handleFabricateGolem}
@@ -370,14 +415,11 @@ function CanonicalApp() {
             golemCount={golemList.length}
             maxGolems={MAX_GOLEMS}
             blueprints={blueprintLibrary.blueprints}
+            onSaveOpportunityPresented={handleSaveOpportunityPresented}
             onSaveBlueprint={handleSaveBlueprint}
-            onBlueprintLoaded={(blueprintId) => {
-              const opportunityId = `load-opportunity-${Date.now()}`;
-              recordBlueprintEvent({ type: 'blueprint_load_opportunity', opportunity_id: opportunityId });
-              recordBlueprintEvent({ type: 'blueprint_loaded', blueprint_id: blueprintId, opportunity_id: opportunityId });
-            }}
-            onBlueprintApplied={(blueprintId) => recordBlueprintEvent({ type: 'blueprint_applied', blueprint_id: blueprintId, opportunity_index: blueprintTelemetry.filter((event) => event.type === 'redeploy_decision').length })}
-            onBlueprintModified={(blueprintId) => recordBlueprintEvent({ type: 'blueprint_modified', blueprint_id: blueprintId })}
+            onBlueprintLoaded={handleBlueprintLoaded}
+            onBlueprintApplied={handleBlueprintApplied}
+            onBlueprintModified={handleBlueprintModified}
           />
         )}
 
@@ -391,10 +433,21 @@ function CanonicalApp() {
             canAct={actionsLeft > 0}
             onConsumeAction={consumeAction}
             onExpeditionStarted={(golemId) => {
-              const opportunityId = `redeploy-${Date.now()}`;
+              const opportunityId = createTelemetryId('redeploy-opportunity');
               const attribution = unitBlueprintSources[golemId] ?? { source: 'MANUAL_NEW' as const };
-              recordBlueprintEvent({ type: 'redeploy_decision', opportunity_id: opportunityId, blueprint_available: blueprintLibrary.blueprints.length > 0 });
-              recordBlueprintEvent({ type: 'expedition_started', opportunity_id: opportunityId, source: attribution.source, blueprint_id: attribution.blueprintId });
+              setBlueprintTelemetry((events) => {
+                const withOpportunity = appendBlueprintTelemetryEvent(events, {
+                  type: 'redeploy_decision',
+                  opportunity_id: opportunityId,
+                  blueprint_available: blueprintLibrary.blueprints.length > 0,
+                });
+                return appendBlueprintTelemetryEvent(withOpportunity, {
+                  type: 'expedition_started',
+                  opportunity_id: opportunityId,
+                  source: attribution.source,
+                  blueprint_id: attribution.blueprintId,
+                });
+              });
             }}
           />
         )}

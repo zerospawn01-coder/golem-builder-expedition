@@ -1,7 +1,14 @@
 node_modules/
+.pnpm-store/
 build/
 dist/
 coverage/
+.vite/
+.cache/
 .DS_Store
+Thumbs.db
+.idea/
+.vscode/
 *.log
 .env*
+!.env.example

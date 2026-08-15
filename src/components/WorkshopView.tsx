@@ -95,13 +95,13 @@ export const WorkshopView: React.FC<WorkshopViewProps> = ({
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2 text-amber-400 font-mono text-[10px] uppercase tracking-widest mb-0.5">
-              <Sparkles className="w-3.5 h-3.5" /> 魔法錬成工房 — GOLEM BUILDER
+              <Sparkles className="w-3.5 h-3.5" /> EXPERIMENTAL FOUNDRY — GOLEM BUILDER
             </div>
             <h2 className="text-lg font-bold text-[#E0E2E4] tracking-wider font-mono">
-              出撃目的地に適合した強靭なゴーレムを設計・錬成
+              異常区域に適合するゴーレム機を設計・製造
             </h2>
             <p className="text-xs text-[#8A8F98] font-mono mt-0.5">
-              組み合わせにより【飛行】【耐熱】【水中行動】などのシナジー特性が発現します。
+              機体骨格・駆動炉心・制御刻印の組み合わせを検査し、適応特性を確定します。
             </p>
           </div>
 
@@ -201,7 +201,7 @@ export const WorkshopView: React.FC<WorkshopViewProps> = ({
                 <span className="w-4 h-4 rounded-xs bg-amber-500/20 text-amber-400 font-mono text-[10px] flex items-center justify-center border border-amber-500/30">
                   1
                 </span>
-                1. 素体 (BODY)
+                1. 機体骨格 (FRAME)
               </label>
               <span className="text-[10px] font-mono text-[#8A8F98]">
                 在庫:<strong className="text-amber-400 font-bold ml-1">{inventory.body[selectedBody] || 0}</strong>
@@ -260,7 +260,7 @@ export const WorkshopView: React.FC<WorkshopViewProps> = ({
                 <span className="w-4 h-4 rounded-xs bg-cyan-500/20 text-cyan-400 font-mono text-[10px] flex items-center justify-center border border-cyan-500/30">
                   2
                 </span>
-                2. 魔導核 (CORE)
+                2. 駆動炉心 (REACTOR)
               </label>
               <span className="text-[10px] font-mono text-[#8A8F98]">
                 在庫:<strong className="text-cyan-400 font-bold ml-1">{inventory.core[selectedCore] || 0}</strong>
@@ -319,7 +319,7 @@ export const WorkshopView: React.FC<WorkshopViewProps> = ({
                 <span className="w-4 h-4 rounded-xs bg-purple-500/20 text-purple-400 font-mono text-[10px] flex items-center justify-center border border-purple-500/30">
                   3
                 </span>
-                3. ルーン (RUNE)
+                3. 制御刻印 (CONTROL SIGIL)
               </label>
               <span className="text-[10px] font-mono text-[#8A8F98]">
                 在庫:<strong className="text-purple-400 font-bold ml-1">{inventory.rune[selectedRune] || 0}</strong>

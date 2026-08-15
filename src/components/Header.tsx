@@ -55,7 +55,7 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             </h1>
             <p className="text-[11px] text-[#8A8F98] font-mono hidden sm:block">
-              素材獲得 ➔ 特性・機能設計 ➔ 遠征探査 ➔ 未知の領域開放
+              DESIGN ➔ FABRICATION ➔ DEPLOYMENT ➔ RECOVERY
             </p>
           </div>
         </div>
@@ -74,7 +74,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <Hammer className="w-3.5 h-3.5" />
-            工房 (BUILD)
+            実験工廠 (FOUNDRY)
           </button>
 
           <button
@@ -89,7 +89,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <Compass className="w-3.5 h-3.5" />
-            遠征地図 (EXPEDITION)
+            異常区域 (DEPLOYMENT)
           </button>
 
           <button

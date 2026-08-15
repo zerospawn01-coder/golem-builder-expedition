@@ -1,4 +1,5 @@
-import type { ExpeditionRegion, Golem, GolemStats } from '../types';
+import type { ExpeditionRegion, GolemStats } from '../types';
+import type { ExpeditionDamageUnit } from './gameData';
 
 export type BreakthroughRoute = 'POWER' | 'ARMOR' | 'MOBILITY' | 'WORK';
 
@@ -53,7 +54,7 @@ export function cMultiAxisExperiment(region: ExpeditionRegion) {
   if (region.id !== 'region_ruins') return undefined;
   return {
     resistPenalty: 42,
-    mobilityDamage: (golem: Golem, target: ExpeditionRegion) => evaluateCMultiAxis(golem.stats, golem.traits.includes('heat_proof'), target, golem.durability).navigationDamage,
-    encounterDamage: (golem: Golem, target: ExpeditionRegion) => evaluateCMultiAxis(golem.stats, golem.traits.includes('heat_proof'), target, golem.durability).routeDamage,
+    mobilityDamage: (golem: ExpeditionDamageUnit, target: ExpeditionRegion) => evaluateCMultiAxis(golem.stats, golem.traits.includes('heat_proof'), target, golem.durability).navigationDamage,
+    encounterDamage: (golem: ExpeditionDamageUnit, target: ExpeditionRegion) => evaluateCMultiAxis(golem.stats, golem.traits.includes('heat_proof'), target, golem.durability).routeDamage,
   };
 }

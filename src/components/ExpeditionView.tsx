@@ -79,7 +79,13 @@ export const ExpeditionView: React.FC<ExpeditionViewProps> = ({
     (selectedGolem && selectedGolem.traits.includes(selectedRegion.resistTrait));
 
   const prediction = selectedGolem
-    ? predictExpeditionOutcome(selectedRegion, selectedGolem.stats, selectedGolem.traits)
+    ? predictExpeditionOutcome(
+        selectedRegion,
+        selectedGolem.stats,
+        selectedGolem.traits,
+        selectedGolem.durability,
+        cUiExperiment && selectedRegion.id === 'region_ruins' ? cMultiAxisExperiment(selectedRegion) : undefined,
+      )
     : null;
   const cRoutePrediction = cUiExperiment && selectedRegion.id === 'region_ruins' && selectedGolem
     ? evaluateCMultiAxis(selectedGolem.stats, selectedGolem.traits.includes('heat_proof'), selectedRegion, selectedGolem.durability)
@@ -383,7 +389,7 @@ export const ExpeditionView: React.FC<ExpeditionViewProps> = ({
                       <div className="p-2.5 rounded-xs bg-[#0F1113] border border-[#2D3135]">
                         <div className="text-[9px] text-[#8A8F98] uppercase">予測損傷</div>
                         <div className={`text-sm font-extrabold ${prediction.maxEstimatedDamage >= 70 ? 'text-rose-400' : prediction.maxEstimatedDamage >= 45 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                          {prediction.minEstimatedDamage}–{prediction.maxEstimatedDamage}%
+                          {prediction.totalDamage}%
                         </div>
                       </div>
                       {(['power', 'armor', 'mobility', 'work'] as const).map((stat) => {

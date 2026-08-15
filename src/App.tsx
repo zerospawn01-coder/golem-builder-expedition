@@ -19,12 +19,21 @@ import {
   getGolemTraits,
   generateGolemName,
 } from './data/gameData';
+import GravityDepthExperiment from './experiments/gravity-depth-v0/GravityDepthExperiment';
+import { fabricateGolem } from './domain/fabrication';
 
 const LOCAL_STORAGE_KEY = 'golem_builder_expedition_save_v2';
 const MAX_GOLEMS = 3;
 const ACTIONS_PER_DAY = 3;
 
 export default function App() {
+  if (new URLSearchParams(window.location.search).get('experiment') === 'GRAVITY_DEPTH_V0') {
+    return <GravityDepthExperiment />;
+  }
+  return <CanonicalApp />;
+}
+
+function CanonicalApp() {
   const [day, setDay] = useState(() => Number(localStorage.getItem(`${LOCAL_STORAGE_KEY}_day`)) || 1);
   const [actionsLeft, setActionsLeft] = useState(() => {
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_actions`);
@@ -136,21 +145,17 @@ export default function App() {
 
   // Build Golem Handler
   const handleBuildGolem = (newGolem: Golem) => {
-    if (golemList.length >= MAX_GOLEMS || !consumeAction()) return;
-    // 1. Deduct materials
-    setInventory((prev) => ({
-      ...prev,
-      body: { ...prev.body, [newGolem.body]: Math.max(0, (prev.body[newGolem.body] || 0) - 1) },
-      core: { ...prev.core, [newGolem.core]: Math.max(0, (prev.core[newGolem.core] || 0) - 1) },
-      rune: { ...prev.rune, [newGolem.rune]: Math.max(0, (prev.rune[newGolem.rune] || 0) - 1) },
-    }));
-
-    // 2. Discover traits
-    registerTraits(newGolem.traits);
-
-    // 3. Add to golem list & set active
-    setGolemList((prev) => [newGolem, ...prev]);
-    setActiveGolemId(newGolem.id);
+    const result = fabricateGolem({ inventory, actionsLeft, units: golemList, maxUnits: MAX_GOLEMS }, {
+      body: newGolem.body,
+      core: newGolem.core,
+      rune: newGolem.rune,
+    });
+    if (!result.ok) return;
+    setInventory(result.state.inventory);
+    setActionsLeft(result.state.actionsLeft);
+    setGolemList(result.state.units);
+    registerTraits(result.golem.traits);
+    setActiveGolemId(result.golem.id);
   };
 
   // Rename Golem
@@ -343,9 +348,9 @@ export default function App() {
       <footer className="border-t border-[#2D3135] bg-[#121417] py-3 px-4 flex flex-col sm:flex-row items-center justify-between text-[11px] text-[#8A8F98] font-mono gap-2">
         <div className="flex items-center gap-2">
           <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span>GOLEM BUILDER — 魔導ゴーレム工房</span>
+          <span>GOLEM BUILDER — EXPERIMENTAL FOUNDRY</span>
         </div>
-        <div>設計 ➔ 適応キー照合 ➔ 遠征探査 ➔ 新資源回収ゲーム</div>
+        <div>DESIGN ➔ FABRICATION ➔ DEPLOYMENT ➔ RECOVERY</div>
       </footer>
     </div>
   );

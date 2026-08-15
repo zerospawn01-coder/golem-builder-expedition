@@ -16,38 +16,45 @@ RELEASE READY    NO
 
 ## Priorities
 
-### P0 — Predicted and actual damage consistency
+### P0 — Blueprint integration and purpose identification
 
-This is a core-loop trust fix, not a cosmetic UI fix.
+`U0_BLUEPRINT_ONLY` is `PROMISING`. Do not request another standalone human test for the current incomplete presentation.
 
-- Prediction and expedition resolution must call the same evaluation function.
-- The shared evaluation must account for current durability, traits, and every damage source.
-- Automated verification must assert equality between predicted and actual damage under the same inputs.
-- A mismatch is a P0 regression because it invalidates the player's pre-deployment decision.
+- Make saved designs easier to distinguish by intended use without assigning a system-recommended role.
+- Connect Blueprint save and recall to the V-1 Design / Fabrication flow.
+- Keep Blueprint, fabricated UNIT, and future RESERVE concepts distinct.
+- Preserve normal material and ACTION costs when fabricating from a Blueprint.
+- Do not add RESERVE HANGAR as part of this work.
 
-### P1 — Underground Crystal Core bad-luck protection
+### P1 — Gravity Depth product presentation
 
-Minimum implementation candidate:
+`GRAVITY_DEPTH_V0` has provided enough evidence for its central design hypothesis. Do not expand the current test population before improving product completeness.
 
-- Count only complete returns from the abandoned mine.
-- After three complete returns without obtaining the Underground Crystal Core, guarantee it.
-- `PARTIAL` and failed expeditions do not advance the guarantee counter.
-- Reset or complete the protection state when the core is obtained.
+- Move the experiment presentation toward the product's foundry and anomalous-zone UI language.
+- Preserve POWER / WORK route choice, cumulative damage, and RETURN / CONTINUE decisions.
+- Preserve unknown-material disclosure boundaries.
+- Keep prediction and resolution on the same evaluation function.
+- Do not add new zones, mission types, exposure mutation, or random hazards during this integration.
 
-This candidate must remain minimal and must not grow into a general recovery or economy system without new player-facing evidence.
+### P2 — Cross-screen UNIT selection consistency
 
-### P2 — Cargo / Regeneration Rune display-name consistency
+- The selected UNIT in storage/detail and the initially selected UNIT in deployment must describe one intentional state model.
+- Do not label the current single selected UNIT as an ACTIVE ROSTER.
+- Resolve this as existing product-state consistency, not as an implicit implementation of RESERVE / ACTIVE.
 
-- A single internal ID must resolve to one player-facing display name.
-- All screens must read the name from one authoritative definition.
-- Final wording must follow the World & Terminology Baseline.
-- Screen-specific aliases are not permitted.
+### Completed foundations
+
+- Predicted and actual damage share an evaluation path and remain a regression contract.
+- Cargo / Regeneration Rune naming remains governed by the World & Terminology baseline.
+- Underground Crystal Core bad-luck protection is not a current production priority and must not expand into a recovery economy without a new decision.
 
 ## Hold
 
 - `SAFE_SUPPLY_S0`
 - New recovery or economy systems
 - Additional audit infrastructure
+- Additional standalone human testing of the current `GRAVITY_DEPTH_V0` and `U0_BLUEPRINT_ONLY` presentations
+- `U1 — RESERVE HANGAR`
 
 Items on hold are not implied backlog priorities. They require observed player-facing need before reconsideration.
 
@@ -63,7 +70,7 @@ Items on hold are not implied backlog priorities. They require observed player-f
 | G6 — Regression | `PARTIAL` | A foundation exists; release hardening has not started |
 | G7 — Release Freeze | `NOT STARTED` | Not applicable in the current phase |
 
-These assessments do not redefine MVP completion and are not automatic blockers during the current human-playtest phase.
+These assessments do not redefine MVP completion and are not automatic blockers during the current product-integration phase.
 
 ## Human-playtest finding
 
@@ -73,3 +80,19 @@ The following within-run continuation motivation was observed:
 - Recovered materials created a desire to fabricate the next unit.
 
 This supports the core loop from expedition result to redesign. Long-term replay across multiple new games has not yet been established and is evaluated separately from MVP completion.
+
+## Experiment decisions
+
+```text
+GRAVITY_DEPTH_V0
+DESIGN HYPOTHESIS   CONFIRMED ENOUGH TO PROCEED
+NEXT                PRODUCT UI INTEGRATION
+ADDITIONAL TEST     STOP
+
+U0_BLUEPRINT_ONLY
+VERDICT             PROMISING
+NEXT                PURPOSE IDENTIFICATION + V-1 INTEGRATION
+ADDITIONAL TEST     STOP
+```
+
+Testing resumes when the integrated feature group is coherent enough for one end-to-end play session, or when a material defect is found.

@@ -1,5 +1,14 @@
 import { evaluateGravityDepth, snapshotUnit } from './engine';
-import type { GravityDepth, GravityExperimentState, GravityRoute, PrototypeMaterialId } from './types';
+import type { GravityDepth, GravityExperimentState, GravityExperimentUnit, GravityRoute, PrototypeMaterialId } from './types';
+
+export function disassembleGravityUnit(state: GravityExperimentState, unit: GravityExperimentUnit): GravityExperimentState {
+  if (unit.isStarter || !state.units.some((candidate) => candidate.id === unit.id)) return state;
+  const inventory = structuredClone(state.inventory);
+  inventory.body[unit.body] += 1;
+  inventory.core[unit.core] += 1;
+  const units = state.units.filter((candidate) => candidate.id !== unit.id);
+  return { ...state, inventory, units, activeUnitId: units[0]?.id ?? '' };
+}
 
 export function startGravityRun(state: GravityExperimentState, now = Date.now()): GravityExperimentState {
   const unit = state.units.find((candidate) => candidate.id === state.activeUnitId);

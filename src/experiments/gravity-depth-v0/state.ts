@@ -27,6 +27,7 @@ export function createInitialGravityState(): GravityExperimentState {
     knownMaterials: [],
     comparisonUnitIds: [],
     comparisonCandidates: [],
+    blueprints: [],
     nextHypothesis: '',
     playtestRecords: [],
   };
@@ -37,7 +38,7 @@ export function loadGravityState(storage: Pick<Storage, 'getItem'>): GravityExpe
     const saved = storage.getItem(GRAVITY_STATE_KEY);
     if (!saved) return createInitialGravityState();
     const parsed = JSON.parse(saved) as Partial<GravityExperimentState>;
-    return { ...createInitialGravityState(), ...parsed, comparisonCandidates: parsed.comparisonCandidates ?? [], playtestRecords: parsed.playtestRecords ?? [] };
+    return { ...createInitialGravityState(), ...parsed, comparisonCandidates: parsed.comparisonCandidates ?? [], blueprints: parsed.blueprints ?? [], playtestRecords: parsed.playtestRecords ?? [] };
   } catch {
     return createInitialGravityState();
   }

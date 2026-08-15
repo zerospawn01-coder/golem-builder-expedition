@@ -2,6 +2,7 @@ import { calculateGolemStats } from '../../data/gameData';
 import type { BodyType, CoreType, GolemStats, RuneType } from '../../types';
 import type {
   FrameMass,
+  GravityCargoItem,
   GravityDepth,
   GravityDepthEvaluation,
   GravityExperimentUnit,
@@ -27,6 +28,23 @@ export const BASE_FRAME_MASS: Record<BodyType, FrameMass> = {
   stone: 'HEAVY',
   iron: 'HEAVY',
 };
+
+export function isPrototypeMaterialAvailable(
+  material: PrototypeMaterialId,
+  knownMaterials: readonly PrototypeMaterialId[],
+  inventory: Readonly<Record<PrototypeMaterialId, number>>,
+): boolean {
+  return knownMaterials.includes(material) && inventory[material] > 0;
+}
+
+export function getGravityRewardDisplayName(
+  item: Pick<GravityCargoItem, 'name' | 'prototypeMaterialId'>,
+  knownMaterials: readonly PrototypeMaterialId[],
+): string {
+  return item.prototypeMaterialId && !knownMaterials.includes(item.prototypeMaterialId)
+    ? 'UNCLASSIFIED MATERIAL'
+    : item.name;
+}
 
 export function applyPrototypeMaterial(stats: GolemStats, material?: PrototypeMaterialId): GolemStats {
   const modifier = material ? PROTOTYPE_MATERIALS[material].stats : {};
@@ -85,7 +103,7 @@ export function evaluateGravityDepth(
     const mobilityDeficit = Math.max(0, 4 - unit.stats.mobility);
     return finishEvaluation(1, unit, [
       { id: 'mobility_deficit', label: 'MOBILITY DEFICIT', amount: Math.min(12, mobilityDeficit * 4) },
-    ], [{ id: 'basic_frame_material', name: 'FERROUS SCRAP / 鉄質スクラップ', count: 2, weight: 1, baseBodyId: 'stone' }]);
+    ], [{ id: 'basic_frame_material', name: 'STONE SCRAP / 石質スクラップ', count: 2, weight: 1, baseBodyId: 'stone' }]);
   }
 
   if (depth === 2) {

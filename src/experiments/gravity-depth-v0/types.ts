@@ -67,6 +67,16 @@ export interface GravityExperimentUnit {
   isStarter?: boolean;
 }
 
+export interface GravityBlueprint {
+  id: string;
+  name: string;
+  body: BodyType;
+  core: CoreType;
+  rune: RuneType;
+  prototypeMaterial?: PrototypeMaterialId;
+  savedAt: number;
+}
+
 export interface GravityExperimentInventory {
   body: Record<BodyType, number>;
   core: Record<CoreType, number>;
@@ -85,6 +95,7 @@ export interface GravityExperimentState {
   knownMaterials: PrototypeMaterialId[];
   comparisonUnitIds: string[];
   comparisonCandidates: GravityExperimentUnit[];
+  blueprints: GravityBlueprint[];
   nextHypothesis: string;
   playtestRecords: Array<{
     depth: GravityDepth;

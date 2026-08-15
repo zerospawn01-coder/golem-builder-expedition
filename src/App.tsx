@@ -20,6 +20,7 @@ import {
   generateGolemName,
 } from './data/gameData';
 import GravityDepthExperiment from './experiments/gravity-depth-v0/GravityDepthExperiment';
+import { fabricateGolem } from './domain/fabrication';
 
 const LOCAL_STORAGE_KEY = 'golem_builder_expedition_save_v2';
 const MAX_GOLEMS = 3;
@@ -144,21 +145,17 @@ function CanonicalApp() {
 
   // Build Golem Handler
   const handleBuildGolem = (newGolem: Golem) => {
-    if (golemList.length >= MAX_GOLEMS || !consumeAction()) return;
-    // 1. Deduct materials
-    setInventory((prev) => ({
-      ...prev,
-      body: { ...prev.body, [newGolem.body]: Math.max(0, (prev.body[newGolem.body] || 0) - 1) },
-      core: { ...prev.core, [newGolem.core]: Math.max(0, (prev.core[newGolem.core] || 0) - 1) },
-      rune: { ...prev.rune, [newGolem.rune]: Math.max(0, (prev.rune[newGolem.rune] || 0) - 1) },
-    }));
-
-    // 2. Discover traits
-    registerTraits(newGolem.traits);
-
-    // 3. Add to golem list & set active
-    setGolemList((prev) => [newGolem, ...prev]);
-    setActiveGolemId(newGolem.id);
+    const result = fabricateGolem({ inventory, actionsLeft, units: golemList, maxUnits: MAX_GOLEMS }, {
+      body: newGolem.body,
+      core: newGolem.core,
+      rune: newGolem.rune,
+    });
+    if (!result.ok) return;
+    setInventory(result.state.inventory);
+    setActionsLeft(result.state.actionsLeft);
+    setGolemList(result.state.units);
+    registerTraits(result.golem.traits);
+    setActiveGolemId(result.golem.id);
   };
 
   // Rename Golem

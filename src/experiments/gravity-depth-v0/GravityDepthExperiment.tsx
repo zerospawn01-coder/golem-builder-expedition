@@ -5,14 +5,17 @@ import {
   ALL_BUILD_PARTS,
   createGravityUnit,
   evaluateGravityDepth,
+  getGravityRewardDisplayName,
+  isPrototypeMaterialAvailable,
   PROTOTYPE_MATERIALS,
   snapshotUnit,
 } from './engine';
 import { createInitialGravityState, loadGravityState, saveGravityState } from './state';
-import { advanceGravityRun, recoverGravityCargo, startGravityRun } from './model';
+import { advanceGravityRun, disassembleGravityUnit, recoverGravityCargo, startGravityRun } from './model';
 import type {
   GravityDepth,
   GravityDepthEvaluation,
+  GravityBlueprint,
   GravityExperimentState,
   GravityExperimentUnit,
   GravityRoute,
@@ -102,7 +105,7 @@ export default function GravityDepthExperiment() {
     const material = buildMaterial || undefined;
     if (state.actionsLeft <= 0 || state.units.length >= 3) return;
     if (state.inventory.body[buildBody] <= 0 || state.inventory.core[buildCore] <= 0 || state.inventory.rune[buildRune] <= 0) return;
-    if (material && state.inventory.prototype[material] <= 0) return;
+    if (material && !isPrototypeMaterialAvailable(material, state.knownMaterials, state.inventory.prototype)) return;
     setState((previous) => {
       const inventory = structuredClone(previous.inventory);
       inventory.body[buildBody] -= 1; inventory.core[buildCore] -= 1; inventory.rune[buildRune] -= 1;
@@ -114,9 +117,39 @@ export default function GravityDepthExperiment() {
 
   const pinBuildCandidate = () => {
     const material = buildMaterial || undefined;
+    if (material && !isPrototypeMaterialAvailable(material, state.knownMaterials, state.inventory.prototype)) return;
     const candidate = createGravityUnit(`candidate-${Date.now()}`, buildBody, buildCore, buildRune, material);
     setState((previous) => ({ ...previous, comparisonCandidates: [...previous.comparisonCandidates.slice(-1), candidate] }));
   };
+
+  const saveBlueprint = () => {
+    if (state.blueprints.length >= 10) return;
+    const material = buildMaterial || undefined;
+    const duplicate = state.blueprints.some((blueprint) => blueprint.body === buildBody && blueprint.core === buildCore && blueprint.rune === buildRune && blueprint.prototypeMaterial === material);
+    if (duplicate) return;
+    const blueprint: GravityBlueprint = {
+      id: `blueprint-${Date.now()}`,
+      name: `BLUEPRINT ${String(state.blueprints.length + 1).padStart(2, '0')}`,
+      body: buildBody,
+      core: buildCore,
+      rune: buildRune,
+      prototypeMaterial: material,
+      savedAt: Date.now(),
+    };
+    setState((previous) => ({ ...previous, blueprints: [...previous.blueprints, blueprint] }));
+  };
+
+  const loadBlueprint = (blueprint: GravityBlueprint) => {
+    setBuildBody(blueprint.body);
+    setBuildCore(blueprint.core);
+    setBuildRune(blueprint.rune);
+    setBuildMaterial(blueprint.prototypeMaterial ?? '');
+  };
+
+  const deleteBlueprint = (blueprintId: string) => setState((previous) => ({
+    ...previous,
+    blueprints: previous.blueprints.filter((blueprint) => blueprint.id !== blueprintId),
+  }));
 
   const repair = (unit: GravityExperimentUnit) => setState((previous) => {
     if (previous.actionsLeft <= 0 || previous.inventory.body[unit.body] <= 0 || unit.durability >= 100) return previous;
@@ -124,13 +157,7 @@ export default function GravityDepthExperiment() {
     return { ...previous, inventory, actionsLeft: previous.actionsLeft - 1, units: previous.units.map((item) => item.id === unit.id ? { ...item, durability: Math.min(100, item.durability + 25) } : item) };
   });
 
-  const disassemble = (unit: GravityExperimentUnit) => setState((previous) => {
-    if (unit.isStarter) return previous;
-    const inventory = structuredClone(previous.inventory); inventory.body[unit.body] += 1; inventory.core[unit.core] += 1;
-    if (unit.prototypeMaterial) inventory.prototype[unit.prototypeMaterial] += 1;
-    const units = previous.units.filter((item) => item.id !== unit.id);
-    return { ...previous, inventory, units, activeUnitId: units[0]?.id ?? '' };
-  });
+  const disassemble = (unit: GravityExperimentUnit) => setState((previous) => disassembleGravityUnit(previous, unit));
 
   const resetExperiment = () => {
     localStorage.removeItem('golem_builder_gravity_depth_v0_state');
@@ -144,7 +171,7 @@ export default function GravityDepthExperiment() {
     return <section className={`${panel} space-y-4`}>
       <div className="flex justify-between"><div><div className="text-[10px] text-amber-400">DEPTH {currentResult.depth} COMPLETE</div><h2 className="font-bold">{DEPTH_NAMES[currentResult.depth]}</h2></div><div className="text-right"><div>UNIT CONDITION {state.run.durability}%</div><div>UNSECURED CARGO {cargoWeight} / {capacity}</div></div></div>
       <DamageBreakdown evaluation={currentResult} />
-      {nextEvaluation && <div className="border-t border-[#34383D] pt-4"><div className="text-[10px] text-[#8A8F98] mb-2">NEXT DEPTH — {DEPTH_NAMES[nextDepth]}</div><DamageBreakdown evaluation={nextEvaluation} /><div className="mt-2 text-xs">DETECTED MATERIAL: {nextEvaluation.rewardPreview[0]?.prototypeMaterialId && state.knownMaterials.includes(nextEvaluation.rewardPreview[0].prototypeMaterialId) ? nextEvaluation.rewardPreview[0].name : 'UNCLASSIFIED MATERIAL'}</div></div>}
+      {nextEvaluation && <div className="border-t border-[#34383D] pt-4"><div className="text-[10px] text-[#8A8F98] mb-2">NEXT DEPTH — {DEPTH_NAMES[nextDepth]}</div><DamageBreakdown evaluation={nextEvaluation} /><div className="mt-2 text-xs">DETECTED MATERIAL: {getGravityRewardDisplayName(nextEvaluation.rewardPreview[0], state.knownMaterials)}</div></div>}
       <label className="block text-xs">DECISION REASON (TEST RECORD)<input className="mt-1 w-full bg-[#0F1113] border border-[#596069] p-2" value={decisionReason} onChange={(event) => setDecisionReason(event.target.value)} /></label>
       <div className="flex gap-2"><button className={button} onClick={beginReturn}>RETURN</button><button className={button} onClick={continueRun}>CONTINUE</button></div>
     </section>;
@@ -152,12 +179,12 @@ export default function GravityDepthExperiment() {
 
   const renderRouteChoice = () => {
     if (!state.run || !activeUnit) return null;
-    return <section className={`${panel} space-y-4`}><div><div className="text-[10px] text-amber-400">DEPTH 3 ROUTE CHOICE</div><h2 className="font-bold">FRACTURED WORKSITE / 断裂作業区</h2></div><label className="block text-xs">ROUTE REASON (TEST RECORD)<input className="mt-1 w-full bg-[#0F1113] border border-[#596069] p-2" value={decisionReason} onChange={(event) => setDecisionReason(event.target.value)} /></label><div className="grid md:grid-cols-2 gap-3">{(['POWER', 'WORK'] as GravityRoute[]).map((route) => { const evaluation = evaluateGravityDepth(3, snapshotUnit(activeUnit, state.run!.durability), route); return <button key={route} onClick={() => { recordDecision(route); applyDepth(3, route); }} className="text-left border border-[#596069] p-4 hover:border-amber-400"><div className="font-bold mb-2">{route} ROUTE</div><div className="text-xs mb-3">{route === 'POWER' ? `POWER ${activeUnit.stats.power} / 10 — force the collapsed gate` : `WORK ${activeUnit.stats.work} / 9 · MOBILITY ${activeUnit.stats.mobility} / 6 — use the service shaft`}</div><DamageBreakdown evaluation={evaluation} /><div className="text-xs mt-3">REWARD: {evaluation.rewardPreview[0].name}</div></button>; })}</div><button className={button} onClick={beginReturn}>RETURN FROM DEPTH 2</button></section>;
+    return <section className={`${panel} space-y-4`}><div><div className="text-[10px] text-amber-400">DEPTH 3 ROUTE CHOICE</div><h2 className="font-bold">FRACTURED WORKSITE / 断裂作業区</h2></div><label className="block text-xs">ROUTE REASON (TEST RECORD)<input className="mt-1 w-full bg-[#0F1113] border border-[#596069] p-2" value={decisionReason} onChange={(event) => setDecisionReason(event.target.value)} /></label><div className="grid md:grid-cols-2 gap-3">{(['POWER', 'WORK'] as GravityRoute[]).map((route) => { const evaluation = evaluateGravityDepth(3, snapshotUnit(activeUnit, state.run!.durability), route); return <button key={route} onClick={() => { recordDecision(route); applyDepth(3, route); }} className="text-left border border-[#596069] p-4 hover:border-amber-400"><div className="font-bold mb-2">{route} ROUTE</div><div className="text-xs mb-3">{route === 'POWER' ? `POWER ${activeUnit.stats.power} / 10 — force the collapsed gate` : `WORK ${activeUnit.stats.work} / 9 · MOBILITY ${activeUnit.stats.mobility} / 6 — use the service shaft`}</div><DamageBreakdown evaluation={evaluation} /><div className="text-xs mt-3">REWARD TENDENCY: {getGravityRewardDisplayName(evaluation.rewardPreview[0], state.knownMaterials)}</div></button>; })}</div><button className={button} onClick={beginReturn}>RETURN FROM DEPTH 2</button></section>;
   };
 
   const renderReturn = () => {
     if (!state.run || !activeUnit) return null;
-    return <section className={`${panel} space-y-4`}><div><div className="text-[10px] text-amber-400">RETURN / CARGO CONFIRMATION</div><h2 className="font-bold">REACHED DEPTH {state.run.currentDepth}{state.run.chosenRoute ? ` · ${state.run.chosenRoute} ROUTE` : ''}</h2></div><div className="space-y-2">{state.run.depthResults.map((result) => <div key={result.depth} className="border-b border-[#34383D] pb-2"><div className="font-bold text-xs">DEPTH {result.depth} — DAMAGE {result.totalDamage}</div><div className="text-[10px] text-[#8A8F98]">{result.damageSources.map((source) => `${source.label} +${source.amount}`).join(' · ')}</div></div>)}</div><div><div className="text-xs font-bold mb-2">UNSECURED CARGO — SELECTED {selectedWeight} / {capacity}</div>{state.run.unsecuredCargo.map((item) => { const selected = state.selectedCargoIds.includes(item.id); const exceeds = !selected && selectedWeight + item.weight * item.count > capacity; return <label key={item.id} className="flex gap-2 py-2 text-xs"><input type="checkbox" checked={selected} disabled={exceeds} onChange={() => setState((previous) => ({ ...previous, selectedCargoIds: selected ? previous.selectedCargoIds.filter((id) => id !== item.id) : [...previous.selectedCargoIds, item.id] }))} />{state.knownMaterials.includes(item.prototypeMaterialId as PrototypeMaterialId) || !item.prototypeMaterialId ? item.name : 'UNCLASSIFIED MATERIAL'} ×{item.count} ({item.weight * item.count} weight)</label>; })}</div><button className={button} onClick={confirmReturn}>CONFIRM RECOVERY</button></section>;
+    return <section className={`${panel} space-y-4`}><div><div className="text-[10px] text-amber-400">RETURN / CARGO CONFIRMATION</div><h2 className="font-bold">REACHED DEPTH {state.run.currentDepth}{state.run.chosenRoute ? ` · ${state.run.chosenRoute} ROUTE` : ''}</h2></div><div className="space-y-2">{state.run.depthResults.map((result) => <div key={result.depth} className="border-b border-[#34383D] pb-2"><div className="font-bold text-xs">DEPTH {result.depth} — DAMAGE {result.totalDamage}</div><div className="text-[10px] text-[#8A8F98]">{result.damageSources.map((source) => `${source.label} +${source.amount}`).join(' · ')}</div></div>)}</div><div><div className="text-xs font-bold mb-2">UNSECURED CARGO — SELECTED {selectedWeight} / {capacity}</div>{state.run.unsecuredCargo.map((item) => { const selected = state.selectedCargoIds.includes(item.id); const exceeds = !selected && selectedWeight + item.weight * item.count > capacity; return <label key={item.id} className="flex gap-2 py-2 text-xs"><input type="checkbox" checked={selected} disabled={exceeds} onChange={() => setState((previous) => ({ ...previous, selectedCargoIds: selected ? previous.selectedCargoIds.filter((id) => id !== item.id) : [...previous.selectedCargoIds, item.id] }))} />{getGravityRewardDisplayName(item, state.knownMaterials)} ×{item.count} ({item.weight * item.count} weight)</label>; })}</div><button className={button} onClick={confirmReturn}>CONFIRM RECOVERY</button></section>;
   };
 
   if (!activeUnit) return null;
@@ -172,7 +199,8 @@ export default function GravityDepthExperiment() {
       {!state.run && <>
         <section className={`${panel} space-y-3`}><div className="flex justify-between"><div><div className="text-[10px] text-amber-400">ANOMALOUS ZONE G-01</div><h1 className="text-xl font-bold">重力異常区域</h1></div><button className={button} onClick={resetExperiment}>RESET EXPERIMENT</button></div><select className="bg-[#0F1113] border border-[#596069] p-2" value={state.activeUnitId} onChange={(event) => setState((previous) => ({ ...previous, activeUnitId: event.target.value }))}>{state.units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name} · DUR {unit.durability}%</option>)}</select><UnitFacts unit={activeUnit} />{depthOnePreview && <DamageBreakdown evaluation={depthOnePreview} />}<div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] text-[#B8BDC4]">{([1,2,3,4] as GravityDepth[]).map((depth) => <div key={depth} className="border border-[#34383D] p-2">DEPTH {depth}<br />{DEPTH_NAMES[depth]}</div>)}</div><button className={button} disabled={state.actionsLeft <= 0 || activeUnit.durability <= 0} onClick={deploy}>DEPLOY — 1 ACTION</button></section>
         <section className={`${panel} space-y-3`}><h2 className="font-bold">TEMPORARY UNIT COMPARISON</h2><div className="text-[10px] text-[#8A8F98]">CURRENT UNIT + UP TO 2 PRE-FABRICATION CANDIDATES · NO SCORE / NO WINNER</div><div className="grid md:grid-cols-3 gap-2">{[activeUnit, ...state.comparisonCandidates].map((unit) => <div key={unit.id} className="border border-[#34383D] p-3"><div className="font-bold text-xs mb-2">{unit.id === activeUnit.id ? 'CURRENT UNIT' : 'CANDIDATE'} — {unit.name}</div><UnitFacts unit={unit} />{([1, 2, 4] as GravityDepth[]).map((depth) => { const evaluation = evaluateGravityDepth(depth, snapshotUnit(unit)); return <div key={depth} className="text-[10px] mt-2">D{depth}: {evaluation.damageSources.map((source) => `${source.label} +${source.amount}`).join(' · ')}</div>; })}</div>)}</div></section>
-        <section className={`${panel} space-y-3`}><h2 className="font-bold">EXPERIMENTAL FABRICATION</h2><div className="grid sm:grid-cols-4 gap-2"><select value={buildBody} onChange={(e) => setBuildBody(e.target.value as BodyType)} className="bg-[#0F1113] border border-[#596069] p-2">{ALL_BUILD_PARTS.bodies.map((id) => <option key={id} value={id}>{BODIES[id].nameEn} ×{state.inventory.body[id]}</option>)}</select><select value={buildCore} onChange={(e) => setBuildCore(e.target.value as CoreType)} className="bg-[#0F1113] border border-[#596069] p-2">{ALL_BUILD_PARTS.cores.map((id) => <option key={id} value={id}>{CORES[id].nameEn} ×{state.inventory.core[id]}</option>)}</select><select value={buildRune} onChange={(e) => setBuildRune(e.target.value as RuneType)} className="bg-[#0F1113] border border-[#596069] p-2">{ALL_BUILD_PARTS.runes.map((id) => <option key={id} value={id}>{RUNES[id].nameEn} ×{state.inventory.rune[id]}</option>)}</select><select value={buildMaterial} onChange={(e) => setBuildMaterial(e.target.value as PrototypeMaterialId | '')} className="bg-[#0F1113] border border-[#596069] p-2"><option value="">NO PROTOTYPE MATERIAL</option>{Object.entries(PROTOTYPE_MATERIALS).map(([id, material]) => <option key={id} value={id}>{state.knownMaterials.includes(id as PrototypeMaterialId) ? material.name : 'UNCLASSIFIED MATERIAL'} ×{state.inventory.prototype[id as PrototypeMaterialId]}</option>)}</select></div><div className="flex gap-2"><button className={button} onClick={pinBuildCandidate}>PIN CANDIDATE</button><button className={button} onClick={buildUnit} disabled={state.actionsLeft <= 0 || state.units.length >= 3}>FABRICATE — 1 ACTION</button></div><div className="space-y-2">{state.units.map((unit) => <div key={unit.id} className="flex flex-wrap justify-between gap-2 border-t border-[#34383D] pt-2 text-xs"><span>{unit.name} · DUR {unit.durability}% · {unit.body}/{unit.core}/{unit.rune}</span><span className="flex gap-2"><button className={button} onClick={() => repair(unit)}>REPAIR</button><button className={button} disabled={unit.isStarter} onClick={() => disassemble(unit)}>DISASSEMBLE</button></span></div>)}</div></section>
+        <section className={`${panel} space-y-3`}><div className="flex justify-between gap-2"><div><h2 className="font-bold">U0 BLUEPRINT LIBRARY</h2><div className="text-[10px] text-[#8A8F98]">PART IDS ONLY · NO UNIT OR MATERIAL DUPLICATION · {state.blueprints.length}/10</div></div><button className={button} onClick={saveBlueprint} disabled={state.blueprints.length >= 10 || state.blueprints.some((blueprint) => blueprint.body === buildBody && blueprint.core === buildCore && blueprint.rune === buildRune && blueprint.prototypeMaterial === (buildMaterial || undefined))}>SAVE CURRENT DESIGN</button></div>{state.blueprints.length === 0 ? <div className="text-xs text-[#8A8F98]">NO SAVED BLUEPRINTS</div> : <div className="space-y-2">{state.blueprints.map((blueprint) => <div key={blueprint.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-[#34383D] pt-2 text-xs"><span><strong>{blueprint.name}</strong> · {blueprint.body}/{blueprint.core}/{blueprint.rune}{blueprint.prototypeMaterial ? ` / ${blueprint.prototypeMaterial}` : ''}</span><span className="flex gap-2"><button className={button} onClick={() => loadBlueprint(blueprint)}>LOAD TO FABRICATION</button><button className={button} onClick={() => deleteBlueprint(blueprint.id)}>DELETE</button></span></div>)}</div>}</section>
+        <section className={`${panel} space-y-3`}><h2 className="font-bold">EXPERIMENTAL FABRICATION</h2><div className="grid sm:grid-cols-4 gap-2"><select value={buildBody} onChange={(e) => setBuildBody(e.target.value as BodyType)} className="bg-[#0F1113] border border-[#596069] p-2">{ALL_BUILD_PARTS.bodies.map((id) => <option key={id} value={id}>{BODIES[id].nameEn} ×{state.inventory.body[id]}</option>)}</select><select value={buildCore} onChange={(e) => setBuildCore(e.target.value as CoreType)} className="bg-[#0F1113] border border-[#596069] p-2">{ALL_BUILD_PARTS.cores.map((id) => <option key={id} value={id}>{CORES[id].nameEn} ×{state.inventory.core[id]}</option>)}</select><select value={buildRune} onChange={(e) => setBuildRune(e.target.value as RuneType)} className="bg-[#0F1113] border border-[#596069] p-2">{ALL_BUILD_PARTS.runes.map((id) => <option key={id} value={id}>{RUNES[id].nameEn} ×{state.inventory.rune[id]}</option>)}</select><select value={buildMaterial} onChange={(e) => setBuildMaterial(e.target.value as PrototypeMaterialId | '')} className="bg-[#0F1113] border border-[#596069] p-2"><option value="">NO PROTOTYPE MATERIAL</option>{Object.entries(PROTOTYPE_MATERIALS).map(([id, material]) => { const materialId = id as PrototypeMaterialId; const available = isPrototypeMaterialAvailable(materialId, state.knownMaterials, state.inventory.prototype); return <option key={id} value={id} disabled={!available}>{available ? material.name : 'UNCLASSIFIED MATERIAL — RECOVERY REQUIRED'} ×{state.inventory.prototype[materialId]}</option>; })}</select></div><div className="flex gap-2"><button className={button} onClick={pinBuildCandidate} disabled={!!buildMaterial && !isPrototypeMaterialAvailable(buildMaterial, state.knownMaterials, state.inventory.prototype)}>PIN CANDIDATE</button><button className={button} onClick={buildUnit} disabled={state.actionsLeft <= 0 || state.units.length >= 3 || state.inventory.body[buildBody] <= 0 || state.inventory.core[buildCore] <= 0 || state.inventory.rune[buildRune] <= 0 || (!!buildMaterial && !isPrototypeMaterialAvailable(buildMaterial, state.knownMaterials, state.inventory.prototype))}>FABRICATE — 1 ACTION</button></div><div className="space-y-2">{state.units.map((unit) => <div key={unit.id} className="flex flex-wrap justify-between gap-2 border-t border-[#34383D] pt-2 text-xs"><span>{unit.name} · DUR {unit.durability}% · {unit.body}/{unit.core}/{unit.rune}</span><span className="flex gap-2"><button className={button} onClick={() => repair(unit)}>REPAIR</button><button className={button} disabled={unit.isStarter} onClick={() => disassemble(unit)}>DISASSEMBLE</button></span></div>)}</div></section>
       </>}
     </div>
   </div>;

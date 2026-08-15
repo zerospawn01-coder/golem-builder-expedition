@@ -1,6 +1,6 @@
 # V-1 — Design / Fabrication Information Architecture & Wireframe
 
-Status: ready for wireframe implementation
+Status: Figma Make pass reviewed / focused revision required
 
 Target: Design / Fabrication screen
 
@@ -216,15 +216,16 @@ Q5 OBSERVED
 critical misunderstanding = 0
 ```
 
-少人数のcomprehension testから開始し、同じ誤解が複数人で再現するかを優先して観察する。統計的な有意差はこの段階の要件にしない。
+現行の未完成Figma Make版へ追加人間テストは要求しない。下記の実装差分を直し、Fabrication、Gravity Depth、Blueprintが一つの製品導線としてまとまった後に一回の通しプレイで確認する。
 
 ## Progression after this baseline
 
 ```text
 V-1 INFORMATION ARCHITECTURE
-→ wireframe implementation
-→ required-state screenshots
-→ V-1E human comprehension test
+→ focused Figma Make revision
+→ product UI implementation / integration
+→ integrated required-state review
+→ one end-to-end comprehension play
 → PASS / FIX
 → World Skin / visual language
 ```
@@ -248,7 +249,144 @@ Rule changes                NONE
 World Skin                  HOLD
 
 STATUS
-READY FOR WIREFRAME IMPLEMENTATION
+VISUAL DIRECTION PASS
+STRUCTURE STRONG PASS
+FOCUSED REVISION REQUIRED
+```
+
+## Reviewed Figma Make pass — required revision
+
+現在の左右分割、構造図、視覚方向、部品選択の可読性は維持する。レイアウトの作り直しは行わない。
+
+### A1 — Last change and stat delta
+
+右側STAT READOUTの直前へ、最後に変更した部品と遷移を表示する。
+
+```text
+LAST CHANGE
+FRAME: STONE → IRON
+
+POWER       15   -2
+ARMOR        8   +2
+MOBILITY     6   +1
+WORK         4   -1
+```
+
+- 4能力すべてに直前構成との差分を表示する。
+- 正負の差分へ同じ視覚重量を与える。
+- 初期表示ではDeltaを出さない。
+- 連続変更時は常に直前選択との差分へ更新する。
+
+### A2 — Zone Fit causality
+
+総損傷と状態だけでは完了としない。既知条件と損傷源を分解する。
+
+```text
+ACCESS                 PASS
+ENVIRONMENT / GRAVITY  WARNING
+
+POWER       15 / 8     PASS
+ARMOR        8 / 6     PASS
+MOBILITY     6 / 8     LOW
+WORK         4 / 9     LOW
+
+DAMAGE SOURCES
+GRAVITY LOAD           +12
+MOBILITY DEFICIT        +8
+
+PREDICTED DAMAGE        20%
+MAJOR CONTRIBUTOR      GRAVITY LOAD
+```
+
+- 表示値は対象区域の共通評価関数から取得する。
+- `MAJOR CONTRIBUTOR` は最大寄与の説明であり、推奨改善箇所ではない。
+- 損傷しない不足条件を、損傷源として偽って表示しない。
+- 複数経路がある場合は選択中経路の評価であることを明示する。
+
+### A3 — Canonical unit slots
+
+完成機上限は正本どおり3体とする。
+
+```text
+UNIT SLOTS 1 / 3
+```
+
+`1 / 4`を表示しない。BLUEPRINT枠は完成機枠とは別に `BLUEPRINTS current / 10` と表現する。RESERVE / ACTIVE ROSTERを暗示しない。
+
+### B1 — Part-card hierarchy
+
+カードの情報優先順位を次にする。
+
+```text
+IRON                         STOCK 2
+ARMOR +8   MOBILITY +3
+Riveted plate assembly
+```
+
+- 名称、在庫、主要能力寄与を第一階層にする。
+- 説明文は弱い色・小さい階層へ下げる。
+- 選択状態でも負の寄与を隠さない。
+
+### B2 — Fabrication cost and readiness
+
+最下部の一行要約を廃止し、Reviewボタンの直前へ移す。
+
+```text
+FABRICATION COST
+
+FRAME          1 / 2 → 1
+REACTOR        1 / 2 → 1
+CONTROL SIGIL  1 / 3 → 2
+ACTION         1
+UNIT SLOT      1 / 3
+
+FABRICATION READY
+[ OPEN FABRICATION REVIEW ]
+```
+
+- `6 ACTION`のように総在庫や別数値を製造ACTIONと誤読させない。
+- 現在在庫、消費量、製造後在庫を同じ行で示す。
+- 製造不能理由はボタンの直前へ一文で表示する。
+
+### B3 — Trait cause change
+
+```text
+HEAT CORE
+CAUSE
+FIRE REACTOR
+GAINED BY CURRENT CHANGE
+```
+
+消失時は次を短時間表示する。
+
+```text
+LOST
+FORGE-TEMPERED
+PREVIOUS CAUSE: STONE FRAME + FIRE REACTOR
+```
+
+### Terminology and data synchronization
+
+- `OFFENSE`ではなく正本表示の`ATTACK`へ統一する。
+- Prototype Materialは実験正本の名称だけを使用する。
+  - `LOW-MASS COMPOSITE`
+  - `DENSE FERROUS MATERIAL`
+  - `GRAVITY-SHIFT CRYSTAL`
+- `GRAVITY BRACE`を正式実装候補へ使用しない。
+- 未回収素材は`UNCLASSIFIED MATERIAL`とし、名前、効果、比較値を開示しない。
+
+### Focused revision acceptance
+
+```text
+LAST CHANGE + 4 STAT DELTAS       REQUIRED
+ZONE FIT DAMAGE SOURCES           REQUIRED
+UNIT SLOTS current / 3            REQUIRED
+FABRICATION COST NEAR REVIEW      REQUIRED
+CANONICAL PART / MATERIAL NAMES   REQUIRED
+
+LAYOUT REBUILD                    NOT REQUIRED
+WORLD SKIN EXPANSION              HOLD
+ADDITIONAL STANDALONE PLAYTEST    STOP
 ```
 
 ## Out of scope

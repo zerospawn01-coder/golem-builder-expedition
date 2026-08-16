@@ -171,6 +171,7 @@ export function assertBlueprintMetricInvariants(metrics: BlueprintMetrics): void
     ['save_rate', metrics.save_rate],
     ['reuse_rate', metrics.reuse_rate],
     ['blueprint_redeploy_rate', metrics.blueprint_redeploy_rate],
+    ['modified_resave_rate', metrics.modified_resave_rate],
   ] as const) {
     if (value !== null && (value < 0 || value > 1)) throw new Error(`INVALID_METRIC_RANGE: ${name}`);
   }

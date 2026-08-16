@@ -193,6 +193,10 @@ assert.throws(() => assertBlueprintMetricInvariants({
   ...duplicateMetrics,
   blueprint_redeploy_rate: 1.01,
 }), /INVALID_METRIC_RANGE: blueprint_redeploy_rate/, 'R2-BEH-05');
+assert.throws(() => assertBlueprintMetricInvariants({
+  ...duplicateMetrics,
+  modified_resave_rate: 1.01,
+}), /INVALID_METRIC_RANGE: modified_resave_rate/, 'R2-BEH-05 modified resave invariant');
 assert.ok((duplicateMetrics.blueprint_redeploy_rate ?? 0) <= 1, 'R2-BEH-05 calculated invariant');
 
 const oneSaveOpportunity: BlueprintTelemetryEvent = { type: 'blueprint_save_opportunity', opportunity_id: 'stable-save-opportunity' };

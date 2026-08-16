@@ -30,6 +30,7 @@ pnpm build
 pnpm verify:damage
 pnpm verify:gravity-depth
 pnpm verify:fabrication
+pnpm verify:r2-blueprints
 ```
 
 `pnpm audit:rules` is diagnostic. The documented baseline can intentionally return a non-zero exit status for known feasibility or softlock findings.

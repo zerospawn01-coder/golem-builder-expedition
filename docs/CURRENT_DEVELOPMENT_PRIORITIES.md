@@ -18,13 +18,16 @@ RELEASE READY    NO
 
 ### P0 — Blueprint integration and purpose identification
 
-`U0_BLUEPRINT_ONLY` is `PROMISING`. Do not request another standalone human test for the current incomplete presentation.
+`U0_BLUEPRINT_ONLY` is `PROMISING`. The integrated R2 V1 presentation is frozen for preregistered evidence collection; do not return to the incomplete standalone prototype.
 
-- Make saved designs easier to distinguish by intended use without assigning a system-recommended role.
-- Connect Blueprint save and recall to the V-1 Design / Fabrication flow.
+- R2 V1 implementation is complete: saved designs can be distinguished by player-authored, non-mechanical purpose tags.
+- Blueprint save and recall are connected to the V-1 Design / Fabrication flow and canonical `fabricateGolem()` transaction.
 - Keep Blueprint, fabricated UNIT, and future RESERVE concepts distinct.
 - Preserve normal material and ACTION costs when fabricating from a Blueprint.
 - Do not add RESERVE HANGAR as part of this work.
+- Freeze the calibrated R2 V1 schema, opportunity semantics, behavioral metrics, and thresholds after PR review and main integration.
+- Do not begin Behavioral collection with telemetry from the uncalibrated PR revision.
+- Do not promote R2 V1 from `CANONICAL HOLD` until at least 30 eligible save opportunities and 30 eligible redeploy decisions have been observed.
 
 ### P1 — Gravity Depth product presentation
 
@@ -91,8 +94,13 @@ ADDITIONAL TEST     STOP
 
 U0_BLUEPRINT_ONLY
 VERDICT             PROMISING
-NEXT                PURPOSE IDENTIFICATION + V-1 INTEGRATION
-ADDITIONAL TEST     STOP
+IMPLEMENTATION      COMPLETE
+MACHINE GATES       PASS
+BEHAVIORAL          INSUFFICIENT EVIDENCE
+METRIC CALIBRATION  PASS / AWAITING PR RE-REVIEW
+COLLECTION          NOT STARTED
+NEXT                PR REVIEW -> MAIN -> EVIDENCE COLLECTION
+CANONICAL           HOLD
 ```
 
 Testing resumes when the integrated feature group is coherent enough for one end-to-end play session, or when a material defect is found.

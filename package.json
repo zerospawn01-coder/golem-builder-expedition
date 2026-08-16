@@ -16,6 +16,8 @@
     "verify:gravity-depth": "tsx scripts/verify-gravity-depth-v0.ts",
     "verify:fabrication": "tsx scripts/verify-fabrication.ts",
     "audit:multi-path-ruins-v1": "tsx scripts/audit-multi-path-ruins-v1.ts",
+    "verify:r2-blueprints": "tsx scripts/verify-r2-blueprint-library.ts",
+    "report:r2-blueprints": "tsx scripts/report-r2-blueprint-behavior.ts",
     "experiment:maintenance": "tsx scripts/compare-maintenance.ts",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"

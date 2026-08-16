@@ -41,6 +41,7 @@ interface ExpeditionViewProps {
   onGoToWorkshop: () => void;
   canAct: boolean;
   onConsumeAction: () => boolean;
+  onExpeditionStarted?: (golemId: string) => void;
 }
 
 export const ExpeditionView: React.FC<ExpeditionViewProps> = ({
@@ -50,6 +51,7 @@ export const ExpeditionView: React.FC<ExpeditionViewProps> = ({
   onGoToWorkshop,
   canAct,
   onConsumeAction,
+  onExpeditionStarted,
 }) => {
   // Region selection
   const [selectedRegionId, setSelectedRegionId] = useState<string>('region_quarry');
@@ -96,6 +98,7 @@ export const ExpeditionView: React.FC<ExpeditionViewProps> = ({
     if (!selectedGolem || !hasAccessKey || isSimulating || hasPendingCargo || !canAct || !onConsumeAction()) return;
 
     soundFx.playClick();
+    onExpeditionStarted?.(selectedGolem.id);
     setIsSimulating(true);
     setCurrentReport(null);
     setSelectedLootIndexes([]);

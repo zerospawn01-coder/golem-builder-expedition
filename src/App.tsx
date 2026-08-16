@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Header } from './components/Header';
 import { WorkshopView } from './components/WorkshopView';
 import { GolemView } from './components/GolemView';
@@ -21,10 +21,28 @@ import {
 } from './data/gameData';
 import GravityDepthExperiment from './experiments/gravity-depth-v0/GravityDepthExperiment';
 import { fabricateGolem } from './domain/fabrication';
+import {
+  EMPTY_BLUEPRINT_LIBRARY,
+  appendBlueprintTelemetryEvent,
+  countEligibleRedeployOpportunities,
+  deserializeBlueprintLibrary,
+  saveBlueprint,
+  serializeBlueprintLibrary,
+  type BlueprintPartIds,
+  type BlueprintSource,
+  type BlueprintTelemetryEvent,
+} from './domain/blueprintLibrary';
 
 const LOCAL_STORAGE_KEY = 'golem_builder_expedition_save_v2';
 const MAX_GOLEMS = 3;
 const ACTIONS_PER_DAY = 3;
+const R2_BLUEPRINT_STORAGE_KEY = 'golem_builder_r2_blueprints_v1';
+const R2_TELEMETRY_STORAGE_KEY = 'golem_builder_r2_telemetry_v1';
+const R2_UNIT_SOURCE_STORAGE_KEY = 'golem_builder_r2_unit_sources_v1';
+
+function createTelemetryId(prefix: string): string {
+  return `${prefix}-${globalThis.crypto.randomUUID()}`;
+}
 
 export default function App() {
   if (new URLSearchParams(window.location.search).get('experiment') === 'GRAVITY_DEPTH_V0') {
@@ -34,6 +52,20 @@ export default function App() {
 }
 
 function CanonicalApp() {
+  const activeSaveOpportunityRef = useRef<{ designSignature: string; opportunityId: string; saved: boolean } | null>(null);
+  const [blueprintLibrary, setBlueprintLibrary] = useState(() => {
+    try { return deserializeBlueprintLibrary(localStorage.getItem(R2_BLUEPRINT_STORAGE_KEY)); }
+    catch { return EMPTY_BLUEPRINT_LIBRARY; }
+  });
+  const [blueprintTelemetry, setBlueprintTelemetry] = useState<BlueprintTelemetryEvent[]>(() => {
+    try { return JSON.parse(localStorage.getItem(R2_TELEMETRY_STORAGE_KEY) || '[]'); }
+    catch { return []; }
+  });
+  const [unitBlueprintSources, setUnitBlueprintSources] = useState<Record<string, { source: BlueprintSource; blueprintId?: string }>>(() => {
+    try { return JSON.parse(localStorage.getItem(R2_UNIT_SOURCE_STORAGE_KEY) || '{}'); }
+    catch { return {}; }
+  });
+  const [r2MeasurementEpoch, setR2MeasurementEpoch] = useState(0);
   const [day, setDay] = useState(() => Number(localStorage.getItem(`${LOCAL_STORAGE_KEY}_day`)) || 1);
   const [actionsLeft, setActionsLeft] = useState(() => {
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_actions`);
@@ -125,6 +157,67 @@ function CanonicalApp() {
     }
   }, [inventory, golemList, activeGolemId, discoveredTraits, day, actionsLeft]);
 
+  useEffect(() => {
+    localStorage.setItem(R2_BLUEPRINT_STORAGE_KEY, serializeBlueprintLibrary(blueprintLibrary));
+    localStorage.setItem(R2_TELEMETRY_STORAGE_KEY, JSON.stringify(blueprintTelemetry));
+    localStorage.setItem(R2_UNIT_SOURCE_STORAGE_KEY, JSON.stringify(unitBlueprintSources));
+  }, [blueprintLibrary, blueprintTelemetry, unitBlueprintSources]);
+
+  const recordBlueprintEvent = useCallback((event: BlueprintTelemetryEvent) => {
+    setBlueprintTelemetry((events) => appendBlueprintTelemetryEvent(events, event));
+  }, []);
+
+  const handleSaveOpportunityPresented = useCallback((designSignature: string) => {
+    const active = activeSaveOpportunityRef.current;
+    if (active?.designSignature === designSignature) {
+      return { opportunityId: active.opportunityId, alreadySaved: active.saved };
+    }
+    const opportunityId = createTelemetryId('save-opportunity');
+    activeSaveOpportunityRef.current = { designSignature, opportunityId, saved: false };
+    recordBlueprintEvent({ type: 'blueprint_save_opportunity', opportunity_id: opportunityId });
+    return { opportunityId, alreadySaved: false };
+  }, [recordBlueprintEvent]);
+
+  const handleSaveBlueprint = (opportunityId: string, parts: BlueprintPartIds, purposeTagIds: string[], loadedBlueprintId?: string) => {
+    const blueprintId = loadedBlueprintId ?? createTelemetryId('blueprint');
+    setBlueprintLibrary((state) => {
+      const existing = loadedBlueprintId
+        ? state.blueprints.find((blueprint) => blueprint.blueprint_id === loadedBlueprintId)
+        : undefined;
+      return saveBlueprint(state, {
+        blueprint_id: blueprintId,
+        part_ids: parts,
+        purpose_tag_ids: [...purposeTagIds],
+        expedition_record_refs: existing ? [...existing.expedition_record_refs] : [],
+      }, loadedBlueprintId ? 'UPDATE' : 'CREATE');
+    });
+    recordBlueprintEvent({ type: 'blueprint_saved', blueprint_id: blueprintId, opportunity_id: opportunityId });
+    if (activeSaveOpportunityRef.current?.opportunityId === opportunityId) {
+      activeSaveOpportunityRef.current.saved = true;
+    }
+    if (loadedBlueprintId) recordBlueprintEvent({ type: 'blueprint_resaved', blueprint_id: loadedBlueprintId });
+  };
+
+  const handleBlueprintLoaded = useCallback((blueprintId: string) => {
+    const opportunityId = createTelemetryId('load-opportunity');
+    setBlueprintTelemetry((events) => {
+      const withOpportunity = appendBlueprintTelemetryEvent(events, { type: 'blueprint_load_opportunity', opportunity_id: opportunityId });
+      return appendBlueprintTelemetryEvent(withOpportunity, { type: 'blueprint_loaded', blueprint_id: blueprintId, opportunity_id: opportunityId });
+    });
+  }, []);
+
+  const handleBlueprintApplied = useCallback((blueprintId: string) => {
+    setBlueprintTelemetry((events) => appendBlueprintTelemetryEvent(events, {
+      type: 'blueprint_applied',
+      blueprint_id: blueprintId,
+      opportunity_index: countEligibleRedeployOpportunities(events),
+    }));
+  }, []);
+
+  const handleBlueprintModified = useCallback((blueprintId: string) => {
+    recordBlueprintEvent({ type: 'blueprint_modified', blueprint_id: blueprintId });
+  }, [recordBlueprintEvent]);
+
   const consumeAction = () => {
     if (actionsLeft <= 0) return false;
     setActionsLeft((value) => value - 1);
@@ -144,18 +237,20 @@ function CanonicalApp() {
   };
 
   // Build Golem Handler
-  const handleBuildGolem = (newGolem: Golem) => {
+  const handleFabricateGolem = (parts: BlueprintPartIds, source: BlueprintSource = 'MANUAL_NEW', blueprintId?: string): Golem | null => {
     const result = fabricateGolem({ inventory, actionsLeft, units: golemList, maxUnits: MAX_GOLEMS }, {
-      body: newGolem.body,
-      core: newGolem.core,
-      rune: newGolem.rune,
+      body: parts.frame_id,
+      core: parts.reactor_id,
+      rune: parts.control_sigil_id,
     });
-    if (!result.ok) return;
+    if (!result.ok) return null;
     setInventory(result.state.inventory);
     setActionsLeft(result.state.actionsLeft);
     setGolemList(result.state.units);
     registerTraits(result.golem.traits);
     setActiveGolemId(result.golem.id);
+    setUnitBlueprintSources((sources) => ({ ...sources, [result.golem.id]: { source, blueprintId } }));
+    return result.golem;
   };
 
   // Rename Golem
@@ -216,6 +311,11 @@ function CanonicalApp() {
 
     const updated = golemList.filter((g) => g.id !== id);
     setGolemList(updated);
+    setUnitBlueprintSources((sources) => {
+      const next = { ...sources };
+      delete next[id];
+      return next;
+    });
     if (activeGolemId === id) {
       setActiveGolemId(updated[0]?.id || null);
     }
@@ -251,6 +351,9 @@ function CanonicalApp() {
     localStorage.removeItem(`${LOCAL_STORAGE_KEY}_traits`);
     localStorage.removeItem(`${LOCAL_STORAGE_KEY}_day`);
     localStorage.removeItem(`${LOCAL_STORAGE_KEY}_actions`);
+    localStorage.removeItem(R2_BLUEPRINT_STORAGE_KEY);
+    localStorage.removeItem(R2_TELEMETRY_STORAGE_KEY);
+    localStorage.removeItem(R2_UNIT_SOURCE_STORAGE_KEY);
 
     setInventory(DEFAULT_INVENTORY);
     setDiscoveredTraits([]);
@@ -274,6 +377,11 @@ function CanonicalApp() {
     setCurrentTab('workshop');
     setDay(1);
     setActionsLeft(ACTIONS_PER_DAY);
+    setBlueprintLibrary(EMPTY_BLUEPRINT_LIBRARY);
+    setBlueprintTelemetry([]);
+    setUnitBlueprintSources({});
+    activeSaveOpportunityRef.current = null;
+    setR2MeasurementEpoch((epoch) => epoch + 1);
   };
 
   return (
@@ -298,13 +406,20 @@ function CanonicalApp() {
         </div>
         {currentTab === 'workshop' && (
           <WorkshopView
+            key={r2MeasurementEpoch}
             inventory={inventory}
             discoveredTraits={discoveredTraits}
-            onBuildGolem={handleBuildGolem}
+            onFabricateGolem={handleFabricateGolem}
             onGoToExpedition={() => setCurrentTab('expedition')}
             canAct={actionsLeft > 0}
             golemCount={golemList.length}
             maxGolems={MAX_GOLEMS}
+            blueprints={blueprintLibrary.blueprints}
+            onSaveOpportunityPresented={handleSaveOpportunityPresented}
+            onSaveBlueprint={handleSaveBlueprint}
+            onBlueprintLoaded={handleBlueprintLoaded}
+            onBlueprintApplied={handleBlueprintApplied}
+            onBlueprintModified={handleBlueprintModified}
           />
         )}
 
@@ -317,6 +432,23 @@ function CanonicalApp() {
             onGoToWorkshop={() => setCurrentTab('workshop')}
             canAct={actionsLeft > 0}
             onConsumeAction={consumeAction}
+            onExpeditionStarted={(golemId) => {
+              const opportunityId = createTelemetryId('redeploy-opportunity');
+              const attribution = unitBlueprintSources[golemId] ?? { source: 'MANUAL_NEW' as const };
+              setBlueprintTelemetry((events) => {
+                const withOpportunity = appendBlueprintTelemetryEvent(events, {
+                  type: 'redeploy_decision',
+                  opportunity_id: opportunityId,
+                  blueprint_available: blueprintLibrary.blueprints.length > 0,
+                });
+                return appendBlueprintTelemetryEvent(withOpportunity, {
+                  type: 'expedition_started',
+                  opportunity_id: opportunityId,
+                  source: attribution.source,
+                  blueprint_id: attribution.blueprintId,
+                });
+              });
+            }}
           />
         )}
 

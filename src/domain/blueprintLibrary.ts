@@ -58,6 +58,10 @@ export interface BlueprintMetrics {
 
 export const EMPTY_BLUEPRINT_LIBRARY: BlueprintLibraryState = { version: R2_BLUEPRINT_STORAGE_VERSION, blueprints: [] };
 
+function hasOwnCatalogId(catalog: object, id: string): boolean {
+  return Object.prototype.hasOwnProperty.call(catalog, id);
+}
+
 function cloneBlueprint(blueprint: Blueprint): Blueprint {
   return {
     blueprint_id: blueprint.blueprint_id,
@@ -68,7 +72,9 @@ function cloneBlueprint(blueprint: Blueprint): Blueprint {
 }
 
 export function isLegalDesign(parts: BlueprintPartIds): boolean {
-  return parts.frame_id in BODIES && parts.reactor_id in CORES && parts.control_sigil_id in RUNES;
+  return hasOwnCatalogId(BODIES, parts.frame_id)
+    && hasOwnCatalogId(CORES, parts.reactor_id)
+    && hasOwnCatalogId(RUNES, parts.control_sigil_id);
 }
 
 export function saveBlueprint(state: BlueprintLibraryState, blueprint: Blueprint, mode: 'CREATE' | 'UPDATE'): BlueprintLibraryState {
@@ -90,9 +96,9 @@ export function resolveBlueprint(
   const blueprint = state.blueprints.find(({ blueprint_id }) => blueprint_id === blueprintId);
   if (!blueprint) return { ok: false, code: 'BLUEPRINT_NOT_FOUND', unavailableIds: [blueprintId] };
   const unavailableIds = [
-    ...(blueprint.part_ids.frame_id in BODIES ? [] : [blueprint.part_ids.frame_id]),
-    ...(blueprint.part_ids.reactor_id in CORES ? [] : [blueprint.part_ids.reactor_id]),
-    ...(blueprint.part_ids.control_sigil_id in RUNES ? [] : [blueprint.part_ids.control_sigil_id]),
+    ...(hasOwnCatalogId(BODIES, blueprint.part_ids.frame_id) ? [] : [blueprint.part_ids.frame_id]),
+    ...(hasOwnCatalogId(CORES, blueprint.part_ids.reactor_id) ? [] : [blueprint.part_ids.reactor_id]),
+    ...(hasOwnCatalogId(RUNES, blueprint.part_ids.control_sigil_id) ? [] : [blueprint.part_ids.control_sigil_id]),
     ...blueprint.expedition_record_refs.filter((id) => !recordExists(id)),
   ];
   if (unavailableIds.length) return { ok: false, code: 'REFERENCE_UNAVAILABLE', unavailableIds };
@@ -248,7 +254,11 @@ export function calculateBlueprintMetrics(events: readonly BlueprintTelemetryEve
   const modified = events.filter((event) => event.type === 'blueprint_modified').length;
   const resaved = events.filter((event) => event.type === 'blueprint_resaved').length;
   firstReuse.sort((a, b) => a - b);
-  const median = firstReuse.length ? firstReuse[Math.floor((firstReuse.length - 1) / 2)] : null;
+  const median = firstReuse.length
+    ? firstReuse.length % 2 === 0
+      ? (firstReuse[firstReuse.length / 2 - 1] + firstReuse[firstReuse.length / 2]) / 2
+      : firstReuse[Math.floor(firstReuse.length / 2)]
+    : null;
   const metrics: BlueprintMetrics = {
     save_rate: saveOpportunities.size ? savedOpportunities.size / saveOpportunities.size : null,
     reuse_rate: savedBlueprints.size ? reusedBlueprints.size / savedBlueprints.size : null,

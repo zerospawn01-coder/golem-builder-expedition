@@ -12,6 +12,7 @@ import {
   saveBlueprint,
   serializeBlueprintLibrary,
   type Blueprint,
+  type BlueprintPartIds,
   type BlueprintTelemetryEvent,
 } from '../src/domain/blueprintLibrary';
 
@@ -199,6 +200,60 @@ assert.throws(() => assertBlueprintMetricInvariants({
 }), /INVALID_METRIC_RANGE: modified_resave_rate/, 'R2-BEH-05 modified resave invariant');
 assert.ok((duplicateMetrics.blueprint_redeploy_rate ?? 0) <= 1, 'R2-BEH-05 calculated invariant');
 
+// R2-BEH-06: even-sized reuse samples average both middle values and cannot false-PASS.
+const evenMedianEvents: BlueprintTelemetryEvent[] = [];
+for (let index = 0; index < 30; index += 1) {
+  evenMedianEvents.push({ type: 'blueprint_save_opportunity', opportunity_id: `beh-06-save-${index}` });
+  evenMedianEvents.push({ type: 'blueprint_saved', blueprint_id: `beh-06-blueprint-${index}`, opportunity_id: `beh-06-save-${index}` });
+}
+for (let index = 1; index <= 30; index += 1) {
+  const opportunityId = `beh-06-redeploy-${index}`;
+  evenMedianEvents.push({ type: 'redeploy_decision', opportunity_id: opportunityId, blueprint_available: true });
+  evenMedianEvents.push({
+    type: 'expedition_started',
+    opportunity_id: opportunityId,
+    source: index <= 9 ? 'BLUEPRINT_DIRECT' : 'MANUAL_NEW',
+  });
+  if (index === 1) {
+    for (let blueprintIndex = 0; blueprintIndex < 5; blueprintIndex += 1) {
+      evenMedianEvents.push({ type: 'blueprint_applied', blueprint_id: `beh-06-blueprint-${blueprintIndex}`, opportunity_index: 1 });
+    }
+  }
+  if (index === 7) {
+    for (let blueprintIndex = 5; blueprintIndex < 10; blueprintIndex += 1) {
+      evenMedianEvents.push({ type: 'blueprint_applied', blueprint_id: `beh-06-blueprint-${blueprintIndex}`, opportunity_index: 7 });
+    }
+  }
+}
+assert.equal(calculateBlueprintMetrics(evenMedianEvents).median_time_to_first_reuse, 4, 'R2-BEH-06 even median');
+assert.equal(assessBlueprintBehavioralEvidence(evenMedianEvents).verdict, 'FAIL — REJECT', 'R2-BEH-06 false PASS guard');
+
+for (const inheritedId of ['toString', '__proto__']) {
+  const invalidParts = {
+    frame_id: inheritedId,
+    reactor_id: 'fire',
+    control_sigil_id: 'attack',
+  } as unknown as BlueprintPartIds;
+  assert.throws(() => saveBlueprint(EMPTY_BLUEPRINT_LIBRARY, {
+    blueprint_id: `prototype-${inheritedId}`,
+    part_ids: invalidParts,
+    purpose_tag_ids: ['GENERAL'],
+    expedition_record_refs: [],
+  }, 'CREATE'), /REFERENCE_UNAVAILABLE/, `prototype catalog ID ${inheritedId} was accepted on save`);
+  const persisted = deserializeBlueprintLibrary(JSON.stringify({
+    version: 1,
+    blueprints: [{
+      blueprint_id: `prototype-${inheritedId}`,
+      part_ids: invalidParts,
+      purpose_tag_ids: ['GENERAL'],
+      expedition_record_refs: [],
+    }],
+  }));
+  const resolution = resolveBlueprint(persisted, `prototype-${inheritedId}`);
+  assert.equal(resolution.ok, false, `prototype catalog ID ${inheritedId} was accepted on resolve`);
+  if (resolution.ok === false) assert.equal(resolution.code, 'REFERENCE_UNAVAILABLE');
+}
+
 const oneSaveOpportunity: BlueprintTelemetryEvent = { type: 'blueprint_save_opportunity', opportunity_id: 'stable-save-opportunity' };
 const appendedOnce = appendBlueprintTelemetryEvent([], oneSaveOpportunity);
 const appendedDuplicate = appendBlueprintTelemetryEvent(appendedOnce, oneSaveOpportunity);
@@ -253,6 +308,8 @@ console.log(JSON.stringify({
     'R2-BEH-03_REDEPLOY_JOIN': 'PASS',
     'R2-BEH-04_DUPLICATE_ID': 'PASS',
     'R2-BEH-05_METRIC_INVARIANT': 'PASS',
+    'R2-BEH-06_MEDIAN_CORRECTNESS': 'PASS',
+    'R2-CATALOG_OWN_PROPERTY': 'PASS',
   },
   behavioral_collection: 'NOT STARTED',
   eligible_save_opportunities: 0,

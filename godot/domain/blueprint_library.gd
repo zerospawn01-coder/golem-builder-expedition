@@ -72,10 +72,25 @@ static func deserialize_library(raw: String) -> Dictionary:
         if blueprint_id.is_empty() or ids.has(blueprint_id):
             return {"ok": false, "error": "DUPLICATE_BLUEPRINT_ID"}
         ids[blueprint_id] = true
-        if typeof(blueprint.get("part_ids", null)) != TYPE_DICTIONARY or not is_legal_design(blueprint["part_ids"]):
+        if typeof(blueprint.get("part_ids", null)) != TYPE_DICTIONARY:
+            return {"ok": false, "error": "INVALID_PART_REFS"}
+        var parts: Dictionary = blueprint["part_ids"]
+        var part_keys := ["frame_id", "reactor_id", "control_sigil_id"]
+        if parts.size() != part_keys.size():
+            return {"ok": false, "error": "INVALID_PART_REFS"}
+        for part_key in part_keys:
+            if not parts.has(part_key) or typeof(parts[part_key]) != TYPE_STRING:
+                return {"ok": false, "error": "INVALID_PART_REFS"}
+        if not is_legal_design(parts):
             return {"ok": false, "error": "INVALID_PART_REFS"}
         if typeof(blueprint.get("purpose_tag_ids", null)) != TYPE_ARRAY or typeof(blueprint.get("expedition_record_refs", null)) != TYPE_ARRAY:
             return {"ok": false, "error": "INVALID_BLUEPRINT"}
+        for tag_id in blueprint["purpose_tag_ids"]:
+            if typeof(tag_id) != TYPE_STRING:
+                return {"ok": false, "error": "INVALID_TAG_REFS"}
+        for record_id in blueprint["expedition_record_refs"]:
+            if typeof(record_id) != TYPE_STRING:
+                return {"ok": false, "error": "INVALID_RECORD_REFS"}
         clean.append(clone_blueprint(blueprint))
     return {"ok": true, "state": {"version": STORAGE_VERSION, "blueprints": clean}}
 

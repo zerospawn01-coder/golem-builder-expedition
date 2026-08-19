@@ -42,6 +42,12 @@ func _test_fabrication() -> void:
     var missing := _fabrication_state()
     missing["inventory"]["body"]["stone"] = 0
     _check(Fabrication.fabricate(missing, {"body": "stone", "core": "fire", "rune": "attack"}, 103).get("reason", "") == "MISSING_FRAME", "FAB-04 frame blocker")
+    var missing_core := _fabrication_state()
+    missing_core["inventory"]["core"]["fire"] = 0
+    _check(Fabrication.fabricate(missing_core, {"body": "stone", "core": "fire", "rune": "attack"}, 104).get("reason", "") == "MISSING_REACTOR", "FAB-05 reactor blocker")
+    var missing_sigil := _fabrication_state()
+    missing_sigil["inventory"]["rune"]["attack"] = 0
+    _check(Fabrication.fabricate(missing_sigil, {"body": "stone", "core": "fire", "rune": "attack"}, 105).get("reason", "") == "MISSING_SIGIL", "FAB-06 sigil blocker")
 
 func _test_damage_consistency() -> void:
     var durability_values: Array = []
@@ -57,7 +63,12 @@ func _test_damage_consistency() -> void:
                         golem["durability"] = durability
                         var evaluation := Catalog.evaluate_expedition_damage(region, golem)
                         var prediction := Catalog.predict_expedition(region, golem)
-                        _check(evaluation.get("ok", false) and prediction.get("ok", false) and int(evaluation.get("total_damage", -1)) == int(prediction.get("total_damage", -2)) and String(evaluation.get("status", "")) == String(prediction.get("status", "?")), "DAMAGE mismatch %s/%s/%s/%s/%d" % [body, core, rune, region, durability])
+                        var rng := RandomNumberGenerator.new()
+                        rng.seed = cases + 1
+                        var report := Catalog.run_expedition_simulation(region, golem, rng)
+                        var expected_report_status := "FAILED" if ["BLOCKED", "FAILED"].has(String(evaluation.get("status", ""))) else String(evaluation.get("status", ""))
+                        _check(evaluation.get("ok", false) and prediction.get("ok", false) and int(evaluation.get("total_damage", -1)) == int(prediction.get("total_damage", -2)) and String(evaluation.get("status", "")) == String(prediction.get("status", "?")), "DAMAGE prediction mismatch %s/%s/%s/%s/%d" % [body, core, rune, region, durability])
+                        _check(report.get("ok", false) and int(report.get("total_damage", -3)) == int(evaluation.get("total_damage", -1)) and String(report.get("status", "?")) == expected_report_status, "DAMAGE resolution mismatch %s/%s/%s/%s/%d" % [body, core, rune, region, durability])
                         cases += 1
     _check(cases == 5120, "DAMAGE audit expected 5120 cases, got %d" % cases)
 
@@ -76,6 +87,12 @@ func _test_blueprint_behavioral_metrics() -> void:
     var invalid := blueprint.duplicate(true)
     invalid["part_ids"]["frame_id"] = "unknown"
     _check(not BlueprintLibrary.save_blueprint(state, invalid, "CREATE").get("ok", true), "R2-GATE invalid ref must fail closed")
+    var bad_parts := blueprint.duplicate(true)
+    bad_parts["part_ids"]["extra_state"] = "forbidden"
+    _check(not BlueprintLibrary.deserialize_library(JSON.stringify({"version": 1, "blueprints": [bad_parts]})).get("ok", true), "R2-GATE extra part state must fail closed")
+    var bad_tag := blueprint.duplicate(true)
+    bad_tag["purpose_tag_ids"] = [7]
+    _check(not BlueprintLibrary.deserialize_library(JSON.stringify({"version": 1, "blueprints": [bad_tag]})).get("ok", true), "R2-GATE non-string tag must fail closed")
 
     var events: Array = []
     for i in range(10):

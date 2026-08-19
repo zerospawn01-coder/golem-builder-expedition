@@ -126,7 +126,7 @@ func _workshop() -> void:
     var preview := Label.new()
     preview.text = "%s\nPOWER %d | ARMOR %d | MOBILITY %d | WORK %d\nTRAITS %s" % [Catalog.generate_golem_name(body_id, core_id, rune_id), stats["power"], stats["armor"], stats["mobility"], stats["work"], ", ".join(traits) if not traits.is_empty() else "NONE"]
     content.add_child(preview)
-    GameState.record_design_opportunity(_parts())
+    var opportunity := GameState.record_design_opportunity(_parts())
     var tags := HBoxContainer.new()
     for tag in Blueprints.PURPOSE_TAG_OPTIONS:
         var check := CheckButton.new()
@@ -137,9 +137,16 @@ func _workshop() -> void:
     content.add_child(tags)
     var actions := HBoxContainer.new()
     var save := Button.new()
-    save.text = "SAVE BLUEPRINT" if loaded_blueprint_id.is_empty() else "UPDATE BLUEPRINT"
-    save.pressed.connect(_save_blueprint)
+    save.text = "SAVE AS NEW"
+    save.disabled = not opportunity.get("ok", false) or bool(opportunity.get("already_saved", false))
+    save.pressed.connect(_save_as_new)
     actions.add_child(save)
+    if not loaded_blueprint_id.is_empty() and blueprint_modified:
+        var update := Button.new()
+        update.text = "UPDATE LOADED"
+        update.disabled = not opportunity.get("ok", false)
+        update.pressed.connect(_update_loaded)
+        actions.add_child(update)
     var fabricate := Button.new()
     fabricate.text = "FABRICATE — 1 ACTION"
     fabricate.disabled = GameState.actions_left <= 0 or GameState.golems.size() >= GameState.MAX_GOLEMS
@@ -187,22 +194,31 @@ func _design_modified() -> void:
     _refresh()
 
 func _tag_changed(enabled: bool, tag: String) -> void:
-    if enabled and not purpose_tags.has(tag):
-        purpose_tags.append(tag)
-    elif not enabled:
+    if enabled and tag == "GENERAL":
+        purpose_tags = ["GENERAL"]
+    elif enabled:
+        purpose_tags.erase("GENERAL")
+        if not purpose_tags.has(tag):
+            purpose_tags.append(tag)
+    else:
         purpose_tags.erase(tag)
-    if purpose_tags.is_empty():
-        purpose_tags.append("GENERAL")
+        if purpose_tags.is_empty():
+            purpose_tags = ["GENERAL"]
+    _refresh()
 
-func _save_blueprint() -> void:
+func _save_as_new() -> void:
+    var result := GameState.save_blueprint(_parts(), purpose_tags, "")
+    _notice("BLUEPRINT SAVED" if result.get("ok", false) else String(result.get("error", "SAVE FAILED")))
+    _refresh()
+
+func _update_loaded() -> void:
     var result := GameState.save_blueprint(_parts(), purpose_tags, loaded_blueprint_id)
     if result.get("ok", false):
-        loaded_blueprint_id = String(result["blueprint_id"])
-        if blueprint_source == "MANUAL_NEW":
-            blueprint_source = "BLUEPRINT_DIRECT"
-        _notice("BLUEPRINT SAVED")
+        blueprint_modified = false
+        blueprint_source = "BLUEPRINT_DIRECT"
+        _notice("BLUEPRINT UPDATED")
     else:
-        _notice(String(result.get("error", "SAVE FAILED")))
+        _notice(String(result.get("error", "UPDATE FAILED")))
     _refresh()
 
 func _load_blueprint(id: String) -> void:

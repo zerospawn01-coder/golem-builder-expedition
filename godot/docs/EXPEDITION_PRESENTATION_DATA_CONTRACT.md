@@ -31,6 +31,17 @@ presentation -> random / clock / global mutable state
 
 ## Data-source classification
 
+Every visible observation block must have exactly one source classification. `MIXED` is not a valid classification and is prohibited. If one conceptual area contains values from different source classes, the UI must split it into separate visible blocks or explicitly classify each visible element before rendering. Phase E1 uses split blocks.
+
+Allowed E1 visible classifications are:
+
+```text
+GAME_STATE
+PRESENTATION
+UNAVAILABLE
+STRUCTURED EVENT STREAM
+```
+
 ### Canonical GameState source of truth
 
 The following values must come from a GameState snapshot, not be recalculated by UI:
@@ -84,10 +95,31 @@ Domain resolution emits structured events only. Presentation converts event dict
 
 The E1 UI must not consume preformatted `title` or `message` strings from the domain layer.
 
+## Visible E1 block mapping
+
+```text
+SYSTEM STATUS          GAME_STATE
+DAMAGE                 GAME_STATE
+STABILITY              PRESENTATION
+JOINT LOAD             UNAVAILABLE
+CARGO                  GAME_STATE
+ROUTE                  GAME_STATE
+NAVIGATION             PRESENTATION
+DEPTH                   UNAVAILABLE
+GOLEM STATUS            GAME_STATE
+GOLEM DIAGNOSTICS       UNAVAILABLE
+ANALYZER                PRESENTATION
+AREA MAP                PRESENTATION
+SIGNAL                  UNAVAILABLE
+LOG                     STRUCTURED EVENT STREAM
+```
+
+This mapping is an implementation gate. A new visible value may not be added to a block whose source class does not own that value.
+
 ## Phase E1 implementation gates
 
 ```text
-E1-DATA-01  Every visible block has a source classification.
+E1-DATA-01  Every visible block has exactly one source classification; MIXED is forbidden.
 E1-DATA-02  ui/ performs no canonical gameplay calculation.
 E1-DATA-03  domain/ contains no E1 visualization-only calculation.
 E1-DATA-04  presentation/ cannot mutate GameState.

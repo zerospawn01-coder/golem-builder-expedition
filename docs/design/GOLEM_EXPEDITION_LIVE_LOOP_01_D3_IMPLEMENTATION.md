@@ -29,8 +29,8 @@ those artifacts; it does not authorize runtime promotion or `MAIN MERGE`.
 D3.1  PURE STEP EVALUATOR             PASS
 D3.2  CANONICAL STATE TRANSACTIONS    PASS
 D3.3  PERSISTENCE / RECOVERY          PASS
-D3.4  CARGO / TELEMETRY COMMIT        NEXT
-D3.5  UI BINDING                      HOLD
+D3.4  CARGO / TELEMETRY COMMIT        PASS
+D3.5  UI BINDING                      NEXT DECISION
 D3.6  RUNTIME / REGRESSION             HOLD
 ```
 
@@ -107,5 +107,42 @@ legacy v2 to READY, v3 DECISION resume, exactly-once IN_PROGRESS recovery,
 RETURNED pending-cargo separation, and DESTROYED non-invasion. Unsupported save
 versions fail closed.
 
-D3.3 is complete. D3.4 may now implement cargo commitment and stable telemetry.
-UI binding remains held until its named slice begins and passes its tests.
+D3.3 completed the persistence prerequisite used by the following D3.4 slice.
+
+### D3.4 cargo and telemetry ownership boundary
+
+Claim is an independent canonical transaction available only in `RETURNED`.
+It validates stable expedition and command identity, normalizes duplicate
+selection entries, requires positive integer quantities and cataloged cargo,
+and enforces pending quantity and total capacity. A valid claim transfers only
+the selected quantities to owned inventory, closes pending cargo, records the
+unselected remainder as discarded, and commits a stable claim result. Invalid
+input returns the complete original state unchanged.
+
+The same claim command returns its recorded result without crediting inventory
+again. Real child-process interruption tests cover both sides of the canonical
+commit: before commit, and after commit but before acknowledgement. Retry and
+reload produce exactly one inventory credit and cannot restore claimable cargo.
+
+D3.2 domain events now carry stable IDs. D3.4 commits them and the claim event
+to the durable telemetry collection in the same canonical generation, deduped
+by event identity. Failure of an optional external telemetry export returns an
+error without changing or blocking canonical gameplay state.
+
+```text
+D3.4-G1  RETURNED leaves owned inventory unchanged                         PASS
+D3.4-G2  explicit valid claim transfers exactly selected cargo             PASS
+D3.4-G3  invalid claim is fail-closed                                       PASS
+D3.4-G4  same claim cannot credit inventory twice                          PASS
+D3.4-G5  reload before claim preserves pending cargo                       PASS
+D3.4-G6  reload after claim cannot restore claimable cargo                 PASS
+D3.4-G7  D3.2 events reach durable telemetry                               PASS
+D3.4-G8  retry/reload does not duplicate telemetry identity                PASS
+D3.4-G9  telemetry sink failure preserves canonical gameplay state         PASS
+
+LOCAL GODOT 4.7.1  PASS — 190230 checks
+```
+
+D3.4 is complete. D3.5 remains a separate authorization decision and may only
+bind presentation to these existing commands; it may not own cargo transfer,
+telemetry durability, or gameplay rules.

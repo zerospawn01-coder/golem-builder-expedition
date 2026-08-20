@@ -4,8 +4,8 @@
 STATUS          FROZEN / PASS
 PHASE           D2 — DETERMINISTIC TEST VECTORS
 CONTRACT        D1 FROZEN / PASS
-IMPLEMENTATION  HOLD / NOT AUTHORIZED
-E3              NEXT DECISION / NOT STARTED
+IMPLEMENTATION  D3 AUTHORIZED / IN PROGRESS
+D3              PURE STEP EVALUATOR IMPLEMENTED
 ```
 
 ## Damage vector artifact
@@ -60,7 +60,7 @@ The fixtures freeze these boundaries before implementation:
 4. v3 `RETURNED` retains pending cargo outside owned inventory;
 5. v3 `DESTROYED` retains the UNIT at durability `0` with no cargo, inventory, or Blueprint mutation.
 
-These are expected migration outcomes. D2 validates fixture structure; E3 must implement the loader and make each fixture executable before runtime promotion.
+These are expected migration outcomes. D2 validates fixture structure; D3 must implement the loader and make each fixture executable before runtime promotion.
 
 ## Automated gate
 
@@ -87,10 +87,12 @@ Primary CI log:
 PHASE D0  PASS — OPTION B APPROVED
 PHASE D1  FROZEN / PASS — COMPONENT-WISE
 PHASE D2  FROZEN / PASS — 5,120 GOLDEN VECTORS + MIGRATION FIXTURES
-PHASE E3  NEXT DECISION / NOT AUTHORIZED
+PHASE D3  AUTHORIZED / IN PROGRESS
 PHASE R   HOLD
 PROMOTION HOLD
 MAIN MERGE HOLD
 ```
 
 D2 contains no gameplay implementation and no new balance rule.
+
+`D3` here is the live-loop implementation phase. The separately reserved Presentation E3 phase remains distinct and is not authorized by this gate.

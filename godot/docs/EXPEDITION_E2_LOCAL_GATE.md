@@ -55,12 +55,12 @@ Future consideration is registered in the repository HOLD list as `GOLEM-EXPEDIT
 PURPOSE       Decide whether an in-progress Expedition state, intermediate
               decisions, and CONTINUE / RETREAT intervention belong in the
               canonical mechanic.
-STATUS        D0 PASS / OPTION B APPROVED; D1 FROZEN; IMPLEMENTATION HOLD
-DEPENDENCIES  NONE — independent design gate; Phase E2/E3 completion is not
+STATUS        D0 PASS; D1/D2 FROZEN; LIVE-LOOP D3 IN PROGRESS
+DEPENDENCIES  NONE — independent design gate; Phase E2/Presentation E3 is not
               a prerequisite.
 ```
 
-The gate is not an E2 continuation and does not authorize implementation. D0 approved a deterministic, turn-based supervised loop; D1 is frozen in `docs/design/GOLEM_EXPEDITION_LIVE_LOOP_01_CANONICAL_CONTRACT.md`. E2/E3 presentation work must not be used to introduce the canonical mechanic indirectly.
+The gate is not an E2 continuation. D0 approved a deterministic, turn-based supervised loop; D1 and D2 are frozen, and its implementation is now the separately named live-loop D3. Presentation E3 remains unstarted and must not be used to introduce the canonical mechanic indirectly.
 
 ## Intentional differences
 
@@ -88,4 +88,4 @@ The post-push PR #3 primary run log was read directly from GitHub Actions job `9
 
 This is an execution environment independent of the local Windows verification. Anonymous third-party access to the log body remains login-gated; that access limitation does not change the directly observed CI content.
 
-The E2 REVIEW verdict is complete and failed on E2-VIEW-02. Successful machine evidence does not override the visual gate and does not release `MAIN MERGE`. `GOLEM-EXPEDITION-LIVE-LOOP-01` now has Option B direction approval, a frozen D1 contract, and frozen D2 vectors; E3 requires an explicit start decision and no gameplay implementation is currently authorized.
+The E2 REVIEW verdict is complete and failed on E2-VIEW-02. Successful machine evidence does not override the visual gate and does not release `MAIN MERGE`. `GOLEM-EXPEDITION-LIVE-LOOP-01` has Option B approval, frozen D1/D2 artifacts, and an authorized live-loop D3 implementation. This does not authorize Presentation E3 or release `MAIN MERGE`.

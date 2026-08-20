@@ -2,14 +2,15 @@
 
 ```text
 STATUS          D0 PASS / OPTION B APPROVED
-IMPLEMENTATION  HOLD / NOT AUTHORIZED
+IMPLEMENTATION  D3 AUTHORIZED / IN PROGRESS
 DECISION CLASS  CANONICAL GAMEPLAY
-DEPENDENCIES    NONE — independent; Phase E2/E3 completion is not required
+DEPENDENCIES    NONE — independent; Phase E2/Presentation E3 completion is not required
 STARTED         2026-08-20
 MAIN MERGE      HOLD
 APPROVAL        CANONICAL DIRECTION APPROVED — OPTION B
 CONTRACT        D1 FROZEN / PASS
 D2              FROZEN / PASS — 5,120 GOLDEN VECTORS
+D3              AUTHORIZED / IN PROGRESS — PURE STEP EVALUATOR
 ```
 
 ## Purpose
@@ -20,7 +21,7 @@ This gate exists because the PC North Star assumes supervised expedition progres
 
 ## Why review may start now
 
-The gate has no dependency on Phase E2 or E3. The following existing evidence is sufficient to begin a decision review without authorizing implementation:
+The gate has no dependency on Phase E2 or Presentation E3. The following existing evidence was sufficient to begin the decision review:
 
 - `GRAVITY_DEPTH_V0` implements an isolated multi-depth state machine with cumulative damage and normal `RETURN` / `CONTINUE` decisions.
 - Its internal result records the central hypothesis as `CONFIRMED ENOUGH TO PROCEED`, with additional testing stopped until product integration.
@@ -91,7 +92,7 @@ The answer is a game-design choice. Code quality or architecture alone cannot se
 | Cost | Low; decision documentation | High; core-mechanism contract, implementation, migration, and regression work |
 | Product risk | Formally gives up full live-loop North Star parity | Changes the canonical core loop and may invalidate instant-resolution assumptions |
 
-Option B is a core-mechanism change, not a presentation feature. It must not be estimated or reviewed as ordinary E3 UI work.
+Option B is a core-mechanism change, not a presentation feature. Its implementation phase is named D3 and must not be estimated or reviewed as Presentation E3 UI work.
 
 The existing 5,120-case damage audit must not simply be discarded if Option B is selected. A promotion contract must state whether the whole-run result is preserved by composing deterministic step results or intentionally changed under a separately approved balance decision.
 
@@ -156,4 +157,4 @@ INSUFFICIENT EVIDENCE
   -> name the exact missing evidence; do not return the work to E2/E3
 ```
 
-Current verdict: **D0 PASS / OPTION B APPROVED / D1 FROZEN / D2 FROZEN / IMPLEMENTATION HOLD**.
+Current verdict: **D0 PASS / OPTION B APPROVED / D1 FROZEN / D2 FROZEN / D3 AUTHORIZED / IN PROGRESS**.

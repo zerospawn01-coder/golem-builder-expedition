@@ -94,7 +94,7 @@ PUBLIC ANONYMOUS LOG       LOGIN-GATED / NOT EXTERNALLY REPRODUCED
 FUTURE LIVE LOOP GATE      D0 PASS / OPTION B APPROVED
 LIVE LOOP CONTRACT         D1 FROZEN / PASS
 LIVE LOOP TEST VECTORS     D2 FROZEN / PASS — 5,120 CASES
-LIVE LOOP IMPLEMENTATION   HOLD / NOT AUTHORIZED
+LIVE LOOP D3               AUTHORIZED / IN PROGRESS
 WEB REGRESSION CI          PASS
 MAIN SCENE MANUAL LAUNCH   NOT RUN
 PC INPUT                   NOT RUN
@@ -103,4 +103,4 @@ MOBILE TOUCH               NOT RUN
 MAIN MERGE                 HOLD
 ```
 
-The canonical direction is registered as `GOLEM-EXPEDITION-LIVE-LOOP-01`. Its dependency is explicitly `NONE`: it is independent and does not require Phase E2 or E3 completion. D0 approved deterministic, turn-based Option B and D1 froze the contract in `docs/design/GOLEM_EXPEDITION_LIVE_LOOP_01_CANONICAL_CONTRACT.md`. Implementation remains unauthorized and must not be treated as a continuation of E2.
+The canonical direction is registered as `GOLEM-EXPEDITION-LIVE-LOOP-01`. Its dependency is explicitly `NONE`: it is independent and does not require Phase E2 or Presentation E3 completion. D0 approved deterministic, turn-based Option B, D1 froze the contract, D2 froze its vectors, and live-loop D3 is authorized and in progress. Presentation E3 remains a separate phase and is not authorized by this decision.

@@ -6,6 +6,7 @@ const BlueprintLibrary = preload("res://domain/blueprint_library.gd")
 const ExpeditionPresenter = preload("res://presentation/expedition_presenter.gd")
 const D2Vectors = preload("res://tests/live_loop_d2_vectors.gd")
 const LiveLoop = preload("res://domain/expedition_live_loop.gd")
+const LiveLoopStore = preload("res://state/expedition_live_loop_store.gd")
 
 var failures: Array[String] = []
 var checks := 0
@@ -21,6 +22,7 @@ func _init() -> void:
     _test_live_loop_duplicate_continue_is_exactly_once()
     _test_live_loop_return_is_exactly_once()
     _test_live_loop_transaction_validation_fails_closed()
+    _test_live_loop_recovery_after_intent_crash()
     if failures.is_empty():
         print("GODOT-PORT: PASS — %d checks" % checks)
         quit(0)
@@ -361,3 +363,33 @@ func _test_live_loop_transaction_validation_fails_closed() -> void:
     var wrong_step := projection.duplicate(true)
     wrong_step["step_index"] = 1
     _check(LiveLoop.apply_continue(state, valid, wrong_step).get("error", "") == "STEP_PROJECTION_INVALID", "D3.2-VALIDATE CONTINUE step identity")
+
+func _test_live_loop_recovery_after_intent_crash() -> void:
+    var path := "user://live-loop-d3-intent-crash-test.json"
+    var absolute := ProjectSettings.globalize_path(path)
+    var survived_path := "%s.survived" % path
+    var survived_absolute := ProjectSettings.globalize_path(survived_path)
+    for suffix in ["", ".bak", ".tmp"]:
+        if FileAccess.file_exists("%s%s" % [absolute, suffix]):
+            DirAccess.remove_absolute("%s%s" % [absolute, suffix])
+    if FileAccess.file_exists(survived_absolute):
+        DirAccess.remove_absolute(survived_absolute)
+    var args := PackedStringArray(["--headless", "--path", ProjectSettings.globalize_path("res://"), "--script", "res://tests/live_loop_d3_crash_probe.gd", "--", path, survived_path])
+    var output: Array = []
+    var exit_code := OS.execute(OS.get_executable_path(), args, output, true)
+    _check(exit_code != 4 and not FileAccess.file_exists(survived_absolute), "D3.3-CRASH child cannot execute after forced termination")
+    var raw := LiveLoopStore._read_valid(path)
+    _check(raw.get("ok", false) and String(raw["state"]["runtime"]["phase"]) == "IN_PROGRESS", "D3.3-CRASH persisted step-2 intent survives")
+    var recovered := LiveLoopStore.load_and_recover(path)
+    _check(recovered.get("ok", false) and recovered.get("recovered", false), "D3.3-CRASH reload recovers pending command")
+    var state: Dictionary = recovered.get("state", {})
+    _check(String(state["runtime"]["phase"]) == "DECISION" and String(state["runtime"]["decision_id"]) == "decision-2" and int(state["runtime"]["next_step_index"]) == 1, "D3.3-CRASH recovery commits exact next decision")
+    _check(int(state["unit"]["durability"]) == 88 and state["runtime"]["step_results"].size() == 1 and state["events"].size() == 2, "D3.3-CRASH damage and events apply once")
+    var reloaded := LiveLoopStore.load_and_recover(path)
+    var normalized_state: Variant = JSON.parse_string(JSON.stringify(state))
+    _check(reloaded.get("ok", false) and not reloaded.get("recovered", true) and reloaded.get("state", {}) == normalized_state, "D3.3-CRASH committed reload does not reapply")
+    for suffix in ["", ".bak", ".tmp"]:
+        if FileAccess.file_exists("%s%s" % [absolute, suffix]):
+            DirAccess.remove_absolute("%s%s" % [absolute, suffix])
+    if FileAccess.file_exists(survived_absolute):
+        DirAccess.remove_absolute(survived_absolute)

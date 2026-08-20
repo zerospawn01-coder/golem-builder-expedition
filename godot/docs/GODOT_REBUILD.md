@@ -91,7 +91,7 @@ E2-VIEW-02 DISPOSITION     WON'T FIX / DESIGN DIVERGENCE
 MACHINE RUN                EXISTENCE + SUCCESS VERIFIED
 LOG CONTENT 10,353         DIRECTLY VERIFIED IN POST-PUSH CI LOG
 PUBLIC ANONYMOUS LOG       LOGIN-GATED / NOT EXTERNALLY REPRODUCED
-FUTURE LIVE LOOP GATE      STARTED / DESIGN REVIEW
+FUTURE LIVE LOOP GATE      DECISION READY / OPTION B RECOMMENDED
 LIVE LOOP IMPLEMENTATION   HOLD / NOT AUTHORIZED
 WEB REGRESSION CI          PASS
 MAIN SCENE MANUAL LAUNCH   NOT RUN
@@ -101,4 +101,4 @@ MOBILE TOUCH               NOT RUN
 MAIN MERGE                 HOLD
 ```
 
-The future canonical design question is registered as `GOLEM-EXPEDITION-LIVE-LOOP-01`. Its dependency is explicitly `NONE`: it is independent and does not require Phase E2 or E3 completion. Design review has started in `docs/design/GOLEM_EXPEDITION_LIVE_LOOP_01_GATE.md`; implementation remains unauthorized and must not be treated as a continuation of E2.
+The future canonical design question is registered as `GOLEM-EXPEDITION-LIVE-LOOP-01`. Its dependency is explicitly `NONE`: it is independent and does not require Phase E2 or E3 completion. The review in `docs/design/GOLEM_EXPEDITION_LIVE_LOOP_01_GATE.md` is decision-ready and recommends a deterministic, turn-based Option B; explicit canonical approval is pending. Implementation remains unauthorized and must not be treated as a continuation of E2.

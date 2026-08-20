@@ -60,7 +60,7 @@ RELEASE READY    NO
 - `U1 — RESERVE HANGAR`
 - `GOLEM-EXPEDITION-LIVE-LOOP-01`
   - Purpose: decide whether an in-progress Expedition state, intermediate decisions, and player intervention (`CONTINUE` / `RETREAT`) belong in the canonical mechanic.
-  - Status: `STARTED / DESIGN REVIEW`; implementation remains `HOLD / NOT AUTHORIZED`.
+  - Status: `DECISION READY / OPTION B RECOMMENDED`; canonical approval is pending and implementation remains `HOLD / NOT AUTHORIZED`.
   - Dependencies: none. This is an independent design gate and does not require Phase E2 or E3 to be completed first.
   - Boundary: it is not continuation work for E2 and does not authorize gameplay or presentation implementation.
   - Gate record: [`design/GOLEM_EXPEDITION_LIVE_LOOP_01_GATE.md`](design/GOLEM_EXPEDITION_LIVE_LOOP_01_GATE.md).

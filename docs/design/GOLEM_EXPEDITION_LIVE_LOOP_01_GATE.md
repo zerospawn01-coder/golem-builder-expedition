@@ -1,7 +1,7 @@
 # GOLEM-EXPEDITION-LIVE-LOOP-01 — Canonical decision gate
 
 ```text
-STATUS          STARTED / DESIGN REVIEW
+STATUS          DECISION READY / OPTION B RECOMMENDED
 IMPLEMENTATION  HOLD / NOT AUTHORIZED
 DECISION CLASS  CANONICAL GAMEPLAY
 DEPENDENCIES    NONE — independent; Phase E2/E3 completion is not required
@@ -53,6 +53,45 @@ OPTION C  Simulate an ongoing mission only in presentation.
 
 The open canonical choice is therefore A versus B. No implementation preference is inferred from the visual reference alone.
 
+## Product decision and synchronization model
+
+This is not a UI-layout decision. It selects how an Expedition exists in canonical time and when player decisions may occur.
+
+```text
+OPTION A  ATOMIC / INSTANT RESOLUTION
+          Deploy commits one complete Expedition transaction and exposes only
+          its result and cargo decision.
+
+OPTION B  PERSISTENT / MULTI-STEP RESOLUTION
+          Deploy opens a canonical runtime transaction that survives across
+          one or more explicit decision points before return or destruction.
+```
+
+Persistent does not automatically mean real-time. Option B may use deterministic, turn-based steps such as the isolated `GRAVITY_DEPTH_V0` flow. Real-time ticks, timers, random mid-mission events, and command-combat controls are separate decisions and are not implied by this gate.
+
+The upstream product question is therefore:
+
+> Is GOLEM BUILDER primarily an atomic design-and-result puzzle, or does its core experience include supervising a design through multiple expedition decisions before the result returns to the foundry?
+
+The answer is a game-design choice. Code quality or architecture alone cannot select it.
+
+## Technical impact comparison
+
+| Concern | Option A — instant | Option B — persistent multi-step |
+|---|---|---|
+| `state/` | No new canonical runtime transitions | Canonical in-progress state, legal decision points, resume/close behavior |
+| `domain/` | Existing whole-run transaction remains | Step evaluator and transition rules; exact RETURN/destruction consequences |
+| Presentation | Result-oriented UI; permanent North Star divergence | Truthful live/decision view can derive from canonical state |
+| Persistence | Current result/cargo boundary | Unresolved-run schema, reload behavior, migration, duplicate-input protection |
+| Damage audit | Existing 5,120 whole-run cases remain authoritative | Existing cases must be preserved or mapped, plus per-step composition/equality audits |
+| Cargo | Current post-result selection | Secured/unsecured ownership across continue, return, destruction, and reload |
+| Cost | Low; decision documentation | High; core-mechanism contract, implementation, migration, and regression work |
+| Product risk | Formally gives up full live-loop North Star parity | Changes the canonical core loop and may invalidate instant-resolution assumptions |
+
+Option B is a core-mechanism change, not a presentation feature. It must not be estimated or reviewed as ordinary E3 UI work.
+
+The existing 5,120-case damage audit must not simply be discarded if Option B is selected. A promotion contract must state whether the whole-run result is preserved by composing deterministic step results or intentionally changed under a separately approved balance decision.
+
 ## Required decision questions
 
 | ID | Question |
@@ -80,6 +119,22 @@ Option B cannot be authorized until a separate frozen contract defines:
 
 The contract must reuse evidence from `GRAVITY_DEPTH_V0` without silently promoting its experimental materials, zone, routes, or save schema.
 
+## Evidence-weighted recommendation
+
+**Recommend Option B: a deterministic, turn-based supervised Expedition loop.** This is a product recommendation awaiting explicit canonical approval, not an implementation authorization.
+
+Reasons:
+
+1. The PC North Star and approved mobile information baseline both define observation, diagnosis, and `CONTINUE` / `RETURN` as the intended experience rather than decoration.
+2. `GRAVITY_DEPTH_V0` already demonstrates an isolated discrete implementation, and its central hypothesis is recorded as confirmed enough to proceed to product integration.
+3. Current priorities explicitly require preservation of cumulative damage and `RETURN` / `CONTINUE` decisions during that integration.
+4. Option A is technically cheaper but would formally abandon full North Star parity and contradict the recorded product direction.
+5. Constraining Option B to deterministic decision steps avoids inferring real-time ticks, random mid-mission events, or command-combat mechanics.
+
+The narrow recommended promotion does **not** include experimental materials, a new zone, POWER/WORK routes, real-time simulation, `AUTO`, speed controls, or `EMERGENCY RETREAT`. Those require separate evidence or decisions.
+
+Before implementation, the product owner must explicitly choose Option B and authorize creation of the frozen canonical contract described above. Until then, the current instant-resolution implementation remains authoritative.
+
 ## Exit states
 
 ```text
@@ -96,4 +151,4 @@ INSUFFICIENT EVIDENCE
   -> name the exact missing evidence; do not return the work to E2/E3
 ```
 
-Current verdict: **OPEN / NO CANONICAL DECISION YET**.
+Current verdict: **DECISION READY / OPTION B RECOMMENDED / CANONICAL APPROVAL PENDING**.

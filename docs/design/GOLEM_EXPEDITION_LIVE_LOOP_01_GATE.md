@@ -137,6 +137,8 @@ The approved direction does **not** include experimental materials, a new zone, 
 
 The product owner explicitly approved Option B. The required D1 contract is frozen in [`GOLEM_EXPEDITION_LIVE_LOOP_01_CANONICAL_CONTRACT.md`](GOLEM_EXPEDITION_LIVE_LOOP_01_CANONICAL_CONTRACT.md). Until a later implementation phase is authorized, the current instant-resolution implementation remains authoritative.
 
+The D1 audit confirmed that the existing domain evaluator already exposes an ordered damage decomposition (`resist`, `mobility`, `encounter`) rather than only a scalar total. D2 must preserve those exact components, their prefix sums, and early-failure reachability across all 5,120 legacy audit cases; it is not authorized to invent a new split.
+
 ## Exit states
 
 ```text

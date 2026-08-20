@@ -161,6 +161,74 @@ sum(step_damage for resolved damage steps)
 
 unless a later, separately approved numeric contract explicitly changes balance. Phase D2 must prove this invariant across the existing 5,120 build/region/durability cases before implementation begins.
 
+### 6.1 Existing component decomposition is authoritative
+
+The current canonical evaluator is not a scalar-only formula. It already computes and returns this ordered component tuple before summing it:
+
+```text
+ENTRY       = resist_damage
+HAZARD      = mobility_damage
+ENCOUNTER   = encounter_damage
+RECOVERY    = 0
+```
+
+The React comparison oracle returns the corresponding `resistDamage`, `mobilityDamage`, and `encounterDamage` fields. Both implementations accumulate them in the same order and record `failure_stage` at the first cumulative durability boundary.
+
+Therefore D2 does **not** design a new decomposition algorithm. It must preserve the existing component outputs exactly. Damage cannot be redistributed, smoothed, deferred, or reassigned between steps merely because the total remains equal.
+
+For every legacy audit case, the frozen compatibility tuple is:
+
+```text
+legacy_components = (
+  evaluation.resist_damage,
+  evaluation.mobility_damage,
+  evaluation.encounter_damage,
+  0
+)
+
+step_components = (
+  ENTRY.step_damage,
+  HAZARD.step_damage,
+  ENCOUNTER.step_damage,
+  RECOVERY.step_damage
+)
+
+step_components == legacy_components
+```
+
+Early termination is also already defined. If ENTRY destroys the UNIT, legacy HAZARD and ENCOUNTER components are exactly `0`. If HAZARD destroys it, legacy ENCOUNTER is exactly `0`. A blocked-access case has all damage components `0`, creates no runtime, and cannot be converted into a failed damage turn.
+
+At each stable decision, accumulated canonical damage is the exact prefix sum:
+
+```text
+before ENTRY       0
+after ENTRY        resist_damage
+after HAZARD       resist_damage + mobility_damage
+after ENCOUNTER    resist_damage + mobility_damage + encounter_damage
+after RECOVERY     unchanged
+```
+
+Normal `RETURN` preserves the prefix already committed and never applies an unresolved suffix. This prefix rule is the balance meaning of intermediate return and is part of D1, not a D2 design choice.
+
+### 6.2 Mandatory D2 vector shape
+
+Each of the existing 5,120 cases must produce a deterministic vector containing at least:
+
+```text
+frame_id / reactor_id / control_sigil_id
+region_id
+starting_durability
+stats / traits
+access_status / resist_status
+legacy component tuple
+cumulative prefix after each component
+failure_stage
+legacy total_damage / status
+expected live-loop step output for every reachable step
+```
+
+D2 must compare component values, order, prefix sums, reachability, failure stage, total, and final status. A vector that checks only `total_damage` is invalid even when the total matches.
+
 ## 7. CONTINUE transaction
 
 `CONTINUE(expedition_id, decision_id, command_id)` is legal only in `DECISION` and only for the current decision.
@@ -293,6 +361,9 @@ D1-TURN-02   One CONTINUE resolves exactly one canonical step.
 D1-DATA-01   Forecast and resolution use identical pure evaluator output.
 D1-DATA-02   Same evaluator input produces exactly identical complete output.
 D1-DAMAGE-01 Step composition preserves the existing whole-run damage total.
+D1-DAMAGE-02 Every step component exactly equals its existing named evaluator component.
+D1-DAMAGE-03 Component order and every cumulative prefix are fixed.
+D1-DAMAGE-04 Early failure zeroes later legacy components and makes later steps unreachable.
 D1-ACTION-01 DEPLOY costs one ACTION; CONTINUE and RETURN cost zero.
 D1-CARGO-01  Pending cargo never enters inventory before claim.
 D1-FAIL-01   Failure clears pending cargo and affects only the deployed UNIT durability.

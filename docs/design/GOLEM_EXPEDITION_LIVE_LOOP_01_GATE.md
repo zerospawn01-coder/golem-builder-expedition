@@ -1,12 +1,14 @@
 # GOLEM-EXPEDITION-LIVE-LOOP-01 — Canonical decision gate
 
 ```text
-STATUS          DECISION READY / OPTION B RECOMMENDED
+STATUS          D0 PASS / OPTION B APPROVED
 IMPLEMENTATION  HOLD / NOT AUTHORIZED
 DECISION CLASS  CANONICAL GAMEPLAY
 DEPENDENCIES    NONE — independent; Phase E2/E3 completion is not required
 STARTED         2026-08-20
 MAIN MERGE      HOLD
+APPROVAL        CANONICAL DIRECTION APPROVED — OPTION B
+CONTRACT        D1 FROZEN / PASS
 ```
 
 ## Purpose
@@ -92,21 +94,21 @@ Option B is a core-mechanism change, not a presentation feature. It must not be 
 
 The existing 5,120-case damage audit must not simply be discarded if Option B is selected. A promotion contract must state whether the whole-run result is preserved by composing deterministic step results or intentionally changed under a separately approved balance decision.
 
-## Required decision questions
+## D1 resolution of required decision questions
 
-| ID | Question |
+| ID | Frozen resolution |
 |---|---|
-| LIVE-01 | Is an in-progress Expedition state necessary to the canonical design loop, or is instant resolution intentional? |
-| LIVE-02 | If promoted, does only initial deployment spend one ACTION, with `CONTINUE` consuming no additional ACTION as in `GRAVITY_DEPTH_V0`? |
-| LIVE-03 | What exact state is secured or lost on normal `RETURN`, destruction, reload, and application exit? |
-| LIVE-04 | Must every `CONTINUE` decision show the next-step prediction from the same pure evaluator used by resolution? |
-| LIVE-05 | Must canonical saves resume at the same unresolved decision point, and what schema/version migration is required? |
-| LIVE-06 | Is `EMERGENCY RETREAT` mechanically distinct from normal `RETURN`? If not, it remains unavailable and must not be displayed. |
-| LIVE-07 | Which structured events are required for decision, return, destruction, cargo, and Blueprint/archive linkage? |
+| LIVE-01 | A canonical in-progress Expedition is required; instant resolution is rejected as the canonical end-state. |
+| LIVE-02 | Only initial deployment spends one ACTION; `CONTINUE` and `RETURN` spend none. |
+| LIVE-03 | RETURN preserves pending cargo for capacity-limited claim; destruction clears it; reload preserves exactly-once state. |
+| LIVE-04 | Every decision uses the same pure step evaluator for forecast and resolution. |
+| LIVE-05 | Canonical saves restore or deterministically recover the same unresolved command/decision with a versioned fail-closed schema. |
+| LIVE-06 | `EMERGENCY RETREAT` is not canonical; normal `RETURN` is the only retreat action. |
+| LIVE-07 | Stable run/decision IDs join start, presentation, continue, return, terminal, cargo, and record events. |
 
 ## Promotion requirements
 
-Option B cannot be authorized until a separate frozen contract defines:
+Option B implementation cannot be authorized until the frozen contract defines:
 
 1. the canonical Expedition state machine and legal transitions;
 2. ACTION and durability transaction boundaries;
@@ -119,9 +121,9 @@ Option B cannot be authorized until a separate frozen contract defines:
 
 The contract must reuse evidence from `GRAVITY_DEPTH_V0` without silently promoting its experimental materials, zone, routes, or save schema.
 
-## Evidence-weighted recommendation
+## Evidence basis for the approved direction
 
-**Recommend Option B: a deterministic, turn-based supervised Expedition loop.** This is a product recommendation awaiting explicit canonical approval, not an implementation authorization.
+**Option B is approved: a deterministic, turn-based supervised Expedition loop.** This direction approval is not an implementation authorization.
 
 Reasons:
 
@@ -131,9 +133,9 @@ Reasons:
 4. Option A is technically cheaper but would formally abandon full North Star parity and contradict the recorded product direction.
 5. Constraining Option B to deterministic decision steps avoids inferring real-time ticks, random mid-mission events, or command-combat mechanics.
 
-The narrow recommended promotion does **not** include experimental materials, a new zone, POWER/WORK routes, real-time simulation, `AUTO`, speed controls, or `EMERGENCY RETREAT`. Those require separate evidence or decisions.
+The approved direction does **not** include experimental materials, a new zone, POWER/WORK routes, real-time simulation, `AUTO`, speed controls, or `EMERGENCY RETREAT`. Those require separate evidence or decisions.
 
-Before implementation, the product owner must explicitly choose Option B and authorize creation of the frozen canonical contract described above. Until then, the current instant-resolution implementation remains authoritative.
+The product owner explicitly approved Option B. The required D1 contract is frozen in [`GOLEM_EXPEDITION_LIVE_LOOP_01_CANONICAL_CONTRACT.md`](GOLEM_EXPEDITION_LIVE_LOOP_01_CANONICAL_CONTRACT.md). Until a later implementation phase is authorized, the current instant-resolution implementation remains authoritative.
 
 ## Exit states
 
@@ -151,4 +153,4 @@ INSUFFICIENT EVIDENCE
   -> name the exact missing evidence; do not return the work to E2/E3
 ```
 
-Current verdict: **DECISION READY / OPTION B RECOMMENDED / CANONICAL APPROVAL PENDING**.
+Current verdict: **D0 PASS / OPTION B APPROVED / D1 FROZEN / IMPLEMENTATION HOLD**.

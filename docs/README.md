@@ -43,7 +43,8 @@ Files under [`design/`](design/) describe candidate structures and decision boun
 - [`design/FOUNDRY_CONTROL_SUPPORT_MODEL.md`](design/FOUNDRY_CONTROL_SUPPORT_MODEL.md)
 - [`design/UNIT_CAPACITY_MODEL.md`](design/UNIT_CAPACITY_MODEL.md)
 - [`design/WORKSHOP_REASONING_SUPPORT_MODEL.md`](design/WORKSHOP_REASONING_SUPPORT_MODEL.md)
-- [`design/GOLEM_EXPEDITION_LIVE_LOOP_01_GATE.md`](design/GOLEM_EXPEDITION_LIVE_LOOP_01_GATE.md) — active canonical decision review; implementation not authorized
+- [`design/GOLEM_EXPEDITION_LIVE_LOOP_01_GATE.md`](design/GOLEM_EXPEDITION_LIVE_LOOP_01_GATE.md) — Option B direction approval and phased gate state; implementation not authorized
+- [`design/GOLEM_EXPEDITION_LIVE_LOOP_01_CANONICAL_CONTRACT.md`](design/GOLEM_EXPEDITION_LIVE_LOOP_01_CANONICAL_CONTRACT.md) — frozen Option B state, transaction, persistence, cargo, and telemetry contract
 
 ## Visual and information design
 

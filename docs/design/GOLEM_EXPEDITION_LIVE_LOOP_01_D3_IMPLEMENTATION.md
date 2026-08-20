@@ -30,8 +30,8 @@ D3.1  PURE STEP EVALUATOR             PASS
 D3.2  CANONICAL STATE TRANSACTIONS    PASS
 D3.3  PERSISTENCE / RECOVERY          PASS
 D3.4  CARGO / TELEMETRY COMMIT        PASS
-D3.5  UI BINDING                      NEXT DECISION
-D3.6  RUNTIME / REGRESSION             HOLD
+D3.5  UI BINDING                      PASS
+D3.6  RUNTIME / REGRESSION            NEXT DECISION
 ```
 
 ### D3.1 evidence
@@ -143,6 +143,34 @@ D3.4-G9  telemetry sink failure preserves canonical gameplay state         PASS
 LOCAL GODOT 4.7.1  PASS — 190230 checks
 ```
 
-D3.4 is complete. D3.5 remains a separate authorization decision and may only
-bind presentation to these existing commands; it may not own cargo transfer,
-telemetry durability, or gameplay rules.
+D3.4 completed the ownership boundary consumed by the following D3.5 binding.
+
+### D3.5 presentation and command binding
+
+The UI binding consumes an immutable presentation model and an injected state
+command port. `CONTINUE`, `RETURN`, and `CLAIM` controls call only that port;
+the UI imports neither domain nor state implementation and contains no cargo,
+durability, inventory, persistence, telemetry, identity-allocation, or phase
+mutation. The state port is the sole adapter to the frozen D3.2–D3.4
+transactions and persists successful results before updating its snapshot.
+
+A static mutation guard scans every `ui/` script for direct `GameState` field
+assignment. It separately rejects domain/state implementation imports and
+canonical field assignment in the live-loop controls, and verifies that all
+three actions route through the approved command port. Functional binding tests
+prove that the presenter derives command availability, CONTINUE and RETURN use
+the state transaction facade, RETURN exposes cargo without transferring it,
+and CLAIM invokes the D3.4 ownership transaction.
+
+```text
+D3.5-G1  ui/ contains no direct GameState field mutation             PASS
+D3.5-G2  live-loop UI imports no domain/state implementation         PASS
+D3.5-G3  CONTINUE/RETURN/CLAIM route only through command port       PASS
+D3.5-G4  presenter model alone determines visible controls           PASS
+D3.5-G5  UI binding owns no canonical calculation or mutation        PASS
+
+LOCAL GODOT 4.7.1  PASS — 190241 checks
+```
+
+D3.5 is complete. D3.6 runtime/regression remains a separate authorization
+decision; D3.5 does not promote the live-loop runtime or release `MAIN MERGE`.

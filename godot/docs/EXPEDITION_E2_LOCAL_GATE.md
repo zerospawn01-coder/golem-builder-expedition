@@ -88,4 +88,4 @@ The post-push PR #3 primary run log was read directly from GitHub Actions job `9
 
 This is an execution environment independent of the local Windows verification. Anonymous third-party access to the log body remains login-gated; that access limitation does not change the directly observed CI content.
 
-The E2 REVIEW verdict is complete and failed on E2-VIEW-02. Successful machine evidence does not override the visual gate and does not release `MAIN MERGE`. `GOLEM-EXPEDITION-LIVE-LOOP-01` now has Option B direction approval and a frozen D1 contract; D2 vectors are next and no gameplay implementation is authorized.
+The E2 REVIEW verdict is complete and failed on E2-VIEW-02. Successful machine evidence does not override the visual gate and does not release `MAIN MERGE`. `GOLEM-EXPEDITION-LIVE-LOOP-01` now has Option B direction approval, a frozen D1 contract, and frozen D2 vectors; E3 requires an explicit start decision and no gameplay implementation is currently authorized.

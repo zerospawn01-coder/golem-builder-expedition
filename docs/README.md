@@ -45,6 +45,7 @@ Files under [`design/`](design/) describe candidate structures and decision boun
 - [`design/WORKSHOP_REASONING_SUPPORT_MODEL.md`](design/WORKSHOP_REASONING_SUPPORT_MODEL.md)
 - [`design/GOLEM_EXPEDITION_LIVE_LOOP_01_GATE.md`](design/GOLEM_EXPEDITION_LIVE_LOOP_01_GATE.md) — Option B direction approval and phased gate state; implementation not authorized
 - [`design/GOLEM_EXPEDITION_LIVE_LOOP_01_CANONICAL_CONTRACT.md`](design/GOLEM_EXPEDITION_LIVE_LOOP_01_CANONICAL_CONTRACT.md) — frozen Option B state, transaction, persistence, cargo, and telemetry contract
+- [`design/GOLEM_EXPEDITION_LIVE_LOOP_01_D2_TEST_VECTORS.md`](design/GOLEM_EXPEDITION_LIVE_LOOP_01_D2_TEST_VECTORS.md) — frozen 5,120-case component goldens and migration fixtures
 
 ## Visual and information design
 

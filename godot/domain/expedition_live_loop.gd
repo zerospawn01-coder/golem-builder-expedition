@@ -132,3 +132,37 @@ static func apply_continue(state: Dictionary, command: Dictionary, projection: D
     next["runtime"] = runtime
     next["unit"] = unit
     return {"ok": true, "duplicate": false, "state": next, "result": result}
+
+static func apply_return(state: Dictionary, command: Dictionary) -> Dictionary:
+    var next := state.duplicate(true)
+    var runtime: Dictionary = next.get("runtime", {})
+    var command_id := String(command.get("command_id", ""))
+    var recorded: Dictionary = runtime.get("command_results", {})
+    if not command_id.is_empty() and recorded.has(command_id):
+        return {"ok": true, "duplicate": true, "state": next, "result": recorded[command_id].duplicate(true)}
+    if command_id.is_empty():
+        return {"ok": false, "error": "COMMAND_ID_REQUIRED", "state": next}
+    if String(runtime.get("phase", "")) != "DECISION":
+        return {"ok": false, "error": "PHASE_INVALID", "state": next}
+    if String(command.get("expedition_id", "")) != String(runtime.get("expedition_id", "")):
+        return {"ok": false, "error": "EXPEDITION_ID_MISMATCH", "state": next}
+    if String(command.get("decision_id", "")) != String(runtime.get("decision_id", "")):
+        return {"ok": false, "error": "DECISION_ID_MISMATCH", "state": next}
+    var unit: Dictionary = next.get("unit", {})
+    if String(unit.get("id", "")) != String(runtime.get("unit_id", "")):
+        return {"ok": false, "error": "UNIT_LOCK_MISMATCH", "state": next}
+
+    var decision_id := String(runtime["decision_id"])
+    var expedition_id := String(runtime["expedition_id"])
+    runtime["phase"] = "RETURNED"
+    runtime["return_reason"] = "PLAYER_RETURN"
+    runtime["deepest_completed_step"] = int(runtime.get("next_step_index", 0)) - 1
+    var events: Array = next.get("events", []).duplicate(true)
+    events.append({"type": "return_selected", "command_id": command_id, "expedition_id": expedition_id, "decision_id": decision_id})
+    events.append({"type": "expedition_returned", "command_id": command_id, "expedition_id": expedition_id, "decision_id": decision_id, "deepest_completed_step": runtime["deepest_completed_step"]})
+    next["events"] = events
+    var result := {"phase": "RETURNED", "return_reason": "PLAYER_RETURN", "deepest_completed_step": runtime["deepest_completed_step"], "command_id": command_id, "expedition_id": expedition_id, "decision_id": decision_id}
+    recorded[command_id] = result.duplicate(true)
+    runtime["command_results"] = recorded
+    next["runtime"] = runtime
+    return {"ok": true, "duplicate": false, "state": next, "result": result}

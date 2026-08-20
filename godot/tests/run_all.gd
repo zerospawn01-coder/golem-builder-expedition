@@ -19,6 +19,8 @@ func _init() -> void:
     _test_live_loop_d2_migration_vectors()
     _test_live_loop_step_evaluator()
     _test_live_loop_duplicate_continue_is_exactly_once()
+    _test_live_loop_return_is_exactly_once()
+    _test_live_loop_transaction_validation_fails_closed()
     if failures.is_empty():
         print("GODOT-PORT: PASS — %d checks" % checks)
         quit(0)
@@ -284,6 +286,8 @@ func _test_live_loop_duplicate_continue_is_exactly_once() -> void:
             var expected_cargo_count := 0 if bool(projection["destroys"]) else 1
             _check(second["state"]["runtime"]["pending_cargo"].size() == expected_cargo_count and second["state"]["inventory"] == state["inventory"], "D3.2-IDEM cargo boundary %s" % case_id)
             _check(second["state"]["events"].size() == 2 and second["state"]["telemetry"].is_empty(), "D3.2-IDEM events/telemetry once %s" % case_id)
+            var expected_phase := String(projection["terminal_status"])
+            _check(String(second["state"]["runtime"]["phase"]) == expected_phase and (expected_phase != "DECISION" or int(second["state"]["runtime"]["next_step_index"]) == step_index + 1), "D3.2-IDEM transition %s" % case_id)
             var terminal := String(projection["terminal_status"])
             if terminal == "DESTROYED":
                 coverage["%s_DESTROYED" % projection["step_id"]] = true
@@ -291,3 +295,69 @@ func _test_live_loop_duplicate_continue_is_exactly_once() -> void:
                 coverage[terminal] = true
     for required in coverage:
         _check(bool(coverage[required]), "D3.2-IDEM coverage %s" % required)
+
+func _test_live_loop_return_is_exactly_once() -> void:
+    var step_coverage := {"ENTRY": false, "HAZARD": false, "ENCOUNTER": false, "RECOVERY": false}
+    var decision_count := 0
+    for vector in D2Vectors.build_all():
+        if not bool(vector["legacy"]["has_access_key"]):
+            continue
+        var input: Dictionary = vector["input"]
+        var golem := Catalog.make_golem(String(input["frame_id"]), String(input["reactor_id"]), String(input["control_sigil_id"]), "d3-unit", 0, false)
+        golem["durability"] = int(input["starting_durability"])
+        var plan := LiveLoop.build_damage_plan(Catalog.evaluate_expedition_damage(String(input["region_id"]), golem), int(input["starting_durability"]))
+        for step_index in range(plan["steps"].size()):
+            var projection := LiveLoop.project_step(plan, step_index)
+            if not projection.get("ok", false):
+                continue
+            decision_count += 1
+            step_coverage[String(projection["step_id"])] = true
+            var case_id := "%s/%s" % [vector["vector_id"], projection["step_id"]]
+            var state := {
+                "unit": {"id": "unit-1", "durability": projection["durability_before"]},
+                "runtime": {"phase": "DECISION", "expedition_id": "expedition-1", "decision_id": "decision-1", "unit_id": "unit-1", "next_step_index": step_index, "durability": projection["durability_before"], "pending_cargo": [{"item_id": "existing-%s" % case_id, "count": 1}], "step_results": [], "command_results": {}},
+                "inventory": {"crystal": 7},
+                "events": [],
+                "telemetry": [],
+            }
+            var command := {"type": "RETURN", "expedition_id": "expedition-1", "decision_id": "decision-1", "command_id": "return-%s" % case_id}
+            var first := LiveLoop.apply_return(state, command)
+            _check(first.get("ok", false) and not first.get("duplicate", true), "D3.2-RETURN first applies %s" % case_id)
+            var committed: Dictionary = first.get("state", {})
+            var before_duplicate := committed.duplicate(true)
+            var second := LiveLoop.apply_return(committed, command)
+            _check(second.get("ok", false) and second.get("duplicate", false), "D3.2-RETURN duplicate recognized %s" % case_id)
+            _check(second.get("result", {}) == first.get("result", {}), "D3.2-RETURN recorded result %s" % case_id)
+            _check(second.get("state", {}) == before_duplicate, "D3.2-RETURN complete state unchanged %s" % case_id)
+            _check(String(second["state"]["runtime"]["phase"]) == "RETURNED" and String(second["state"]["runtime"]["return_reason"]) == "PLAYER_RETURN" and int(second["state"]["runtime"]["deepest_completed_step"]) == step_index - 1, "D3.2-RETURN transition %s" % case_id)
+            _check(int(second["state"]["unit"]["durability"]) == int(state["unit"]["durability"]) and second["state"]["runtime"]["pending_cargo"] == state["runtime"]["pending_cargo"], "D3.2-RETURN durability/cargo unchanged %s" % case_id)
+            _check(second["state"]["events"].size() == 2 and second["state"]["telemetry"].is_empty() and second["state"]["inventory"] == state["inventory"], "D3.2-RETURN side effects once %s" % case_id)
+    _check(decision_count == 10368, "D3.2-RETURN all reachable D2 decisions")
+    for required in step_coverage:
+        _check(bool(step_coverage[required]), "D3.2-RETURN coverage %s" % required)
+
+func _test_live_loop_transaction_validation_fails_closed() -> void:
+    var state := {"unit": {"id": "unit-1", "durability": 100}, "runtime": {"phase": "DECISION", "expedition_id": "expedition-1", "decision_id": "decision-1", "unit_id": "unit-1", "next_step_index": 0, "pending_cargo": [], "command_results": {}}, "inventory": {}, "events": [], "telemetry": []}
+    var projection := {"ok": true, "step_index": 0, "step_id": "ENTRY", "durability_after": 90, "destroys": false, "terminal_status": "DECISION", "cargo_delta": []}
+    var valid := {"expedition_id": "expedition-1", "decision_id": "decision-1", "command_id": "command-1", "next_decision_id": "decision-2"}
+    var cases := [
+        ["COMMAND_ID_REQUIRED", {"expedition_id": "expedition-1", "decision_id": "decision-1"}],
+        ["EXPEDITION_ID_MISMATCH", {"expedition_id": "other", "decision_id": "decision-1", "command_id": "command-1"}],
+        ["DECISION_ID_MISMATCH", {"expedition_id": "expedition-1", "decision_id": "stale", "command_id": "command-1"}],
+    ]
+    for item in cases:
+        var continue_result := LiveLoop.apply_continue(state, item[1], projection)
+        _check(continue_result.get("error", "") == item[0] and continue_result.get("state", {}) == state, "D3.2-VALIDATE CONTINUE %s" % item[0])
+        var return_result := LiveLoop.apply_return(state, item[1])
+        _check(return_result.get("error", "") == item[0] and return_result.get("state", {}) == state, "D3.2-VALIDATE RETURN %s" % item[0])
+    var wrong_phase := state.duplicate(true)
+    wrong_phase["runtime"]["phase"] = "RETURNED"
+    _check(LiveLoop.apply_continue(wrong_phase, valid, projection).get("error", "") == "PHASE_INVALID", "D3.2-VALIDATE CONTINUE phase")
+    _check(LiveLoop.apply_return(wrong_phase, valid).get("error", "") == "PHASE_INVALID", "D3.2-VALIDATE RETURN phase")
+    var wrong_unit := state.duplicate(true)
+    wrong_unit["unit"]["id"] = "other"
+    _check(LiveLoop.apply_continue(wrong_unit, valid, projection).get("error", "") == "UNIT_LOCK_MISMATCH", "D3.2-VALIDATE CONTINUE unit lock")
+    _check(LiveLoop.apply_return(wrong_unit, valid).get("error", "") == "UNIT_LOCK_MISMATCH", "D3.2-VALIDATE RETURN unit lock")
+    var wrong_step := projection.duplicate(true)
+    wrong_step["step_index"] = 1
+    _check(LiveLoop.apply_continue(state, valid, wrong_step).get("error", "") == "STEP_PROJECTION_INVALID", "D3.2-VALIDATE CONTINUE step identity")

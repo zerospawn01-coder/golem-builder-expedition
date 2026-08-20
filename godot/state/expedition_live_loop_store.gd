@@ -65,7 +65,7 @@ static func load_and_recover(path: String) -> Dictionary:
     var applied := LiveLoop.apply_continue(checkpoint, command, projection)
     if not applied.get("ok", false):
         return {"ok": false, "error": "RECOVERY_APPLY_FAILED", "cause": applied.get("error", "")}
-    var committed: Dictionary = applied["state"]
+    var committed: Dictionary = LiveLoop.commit_telemetry(applied["state"])
     var written := _write_atomic(path, {"schema": SCHEMA, "state": committed})
     if not written.get("ok", false):
         return written

@@ -7,6 +7,9 @@ const ExpeditionPresenter = preload("res://presentation/expedition_presenter.gd"
 const D2Vectors = preload("res://tests/live_loop_d2_vectors.gd")
 const LiveLoop = preload("res://domain/expedition_live_loop.gd")
 const LiveLoopStore = preload("res://state/expedition_live_loop_store.gd")
+const LiveLoopCommandPort = preload("res://state/expedition_live_loop_command_port.gd")
+const LiveLoopPresenter = preload("res://presentation/expedition_live_loop_presenter.gd")
+const LiveLoopControls = preload("res://ui/expedition_live_loop_controls.gd")
 
 var failures: Array[String] = []
 var checks := 0
@@ -28,6 +31,8 @@ func _init() -> void:
     _test_live_loop_d2_migrations_execute()
     _test_live_loop_claim_and_telemetry_boundaries()
     _test_live_loop_claim_crash_retries()
+    _test_live_loop_ui_mutation_guard()
+    _test_live_loop_command_port_and_binding()
     if failures.is_empty():
         print("GODOT-PORT: PASS — %d checks" % checks)
         quit(0)
@@ -519,5 +524,47 @@ func _test_live_loop_claim_crash_retries() -> void:
         var final_reload := LiveLoopStore.load_and_recover(path)
         _check(final_reload.get("ok", false) and int(final_reload["state"]["inventory"]["crystal"]) == 7 and final_reload["state"]["runtime"]["pending_cargo"].is_empty(), "D3.4-G6 reload cannot restore claimable cargo %s" % stage)
         for target in [absolute, "%s.bak" % absolute, "%s.tmp" % absolute, survived_absolute]:
+            if FileAccess.file_exists(target):
+                DirAccess.remove_absolute(target)
+
+func _test_live_loop_ui_mutation_guard() -> void:
+    var assignment_guard := RegEx.new()
+    assignment_guard.compile("GameState\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\n]+\\])?\\s*=(?!=)")
+    for path in ["res://ui/main.gd", "res://ui/main_e1.gd", "res://ui/expedition_live_loop_controls.gd"]:
+        var file := FileAccess.open(path, FileAccess.READ)
+        var source := file.get_as_text()
+        _check(assignment_guard.search(source) == null, "D3.5-GUARD no direct GameState field mutation %s" % path)
+    var controls_file := FileAccess.open("res://ui/expedition_live_loop_controls.gd", FileAccess.READ)
+    var controls_source := controls_file.get_as_text()
+    _check(not controls_source.contains("res://domain/") and not controls_source.contains("res://state/"), "D3.5-GUARD UI imports no domain/state implementation")
+    _check(controls_source.contains("_command_port.continue_current()") and controls_source.contains("_command_port.return_current()") and controls_source.contains("_command_port.claim(selection)"), "D3.5-GUARD all actions use frozen command port")
+    _check(not controls_source.contains("pending_cargo\"] =") and not controls_source.contains("inventory\"] =") and not controls_source.contains("durability\"] ="), "D3.5-GUARD UI owns no canonical mutation")
+
+func _test_live_loop_command_port_and_binding() -> void:
+    var plan := LiveLoop.build_damage_plan({"ok": true, "status": "SUCCESS", "failure_stage": "", "resist_damage": 12, "mobility_damage": 8, "encounter_damage": 5, "total_damage": 25}, 100)
+    var base_state := {"unit": {"id": "unit-ui", "durability": 100}, "runtime": {"phase": "DECISION", "expedition_id": "expedition-ui", "decision_id": "decision-1", "unit_id": "unit-ui", "next_step_index": 0, "durability": 100, "pending_cargo": [{"item_id": "cargo-ui", "catalog_id": "crystal", "quantity": 1}], "step_results": [], "command_results": {}, "claim_results": {}, "claim_state": "OPEN", "damage_plan": plan}, "inventory": {"crystal": 0}, "events": [], "durable_telemetry": []}
+    var ids := [0]
+    var identity_provider := func(prefix: String) -> String:
+        ids[0] = int(ids[0]) + 1
+        return "%s-%d" % [prefix, ids[0]]
+    var continue_path := "user://live-loop-d3-ui-continue.json"
+    var continue_port := LiveLoopCommandPort.new(continue_path, base_state, {"crystal": {"weight": 1}}, 2, identity_provider)
+    var continued := continue_port.continue_current()
+    _check(continued.get("ok", false) and int(continue_port.snapshot()["unit"]["durability"]) == 88 and int(continue_port.snapshot()["runtime"]["next_step_index"]) == 1 and continue_port.snapshot()["durable_telemetry"].size() == 2, "D3.5-BIND CONTINUE uses command port transaction")
+    var return_path := "user://live-loop-d3-ui-return.json"
+    var return_port := LiveLoopCommandPort.new(return_path, base_state, {"crystal": {"weight": 1}}, 2, identity_provider)
+    var returned := return_port.return_current()
+    _check(returned.get("ok", false) and String(return_port.snapshot()["runtime"]["phase"]) == "RETURNED" and int(return_port.snapshot()["inventory"]["crystal"]) == 0 and return_port.snapshot()["durable_telemetry"].size() == 2, "D3.5-BIND RETURN exposes pending cargo without transfer")
+    var model := LiveLoopPresenter.build(return_port.snapshot())
+    _check(model["can_claim"] and not model["can_continue"] and not model["can_return"], "D3.5-BIND presenter derives command availability")
+    var controls := LiveLoopControls.new()
+    controls.bind(return_port, model)
+    _check(controls.get_child_count() == 2 and String(controls.get_child(1).text) == "CLAIM SELECTED CARGO", "D3.5-BIND UI renders presenter model only")
+    controls._claim_pressed()
+    _check(int(return_port.snapshot()["inventory"]["crystal"]) == 1 and String(return_port.snapshot()["runtime"]["claim_state"]) == "CLAIMED", "D3.5-BIND claim invokes D3.4 command port")
+    controls.free()
+    for path in [continue_path, return_path]:
+        var absolute := ProjectSettings.globalize_path(path)
+        for target in [absolute, "%s.bak" % absolute, "%s.tmp" % absolute]:
             if FileAccess.file_exists(target):
                 DirAccess.remove_absolute(target)

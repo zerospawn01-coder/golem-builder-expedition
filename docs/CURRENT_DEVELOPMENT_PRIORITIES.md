@@ -2,7 +2,7 @@
 
 Status: canonical development decision
 
-Effective: 2026-08-14
+Effective: 2026-08-20
 
 This is a current, revisable decision record. Permanent phase and decision rules live in [`MVP_STATUS_AND_PLAYTEST_POLICY.md`](MVP_STATUS_AND_PLAYTEST_POLICY.md).
 
@@ -58,6 +58,15 @@ RELEASE READY    NO
 - Additional audit infrastructure
 - Additional standalone human testing of the current `GRAVITY_DEPTH_V0` and `U0_BLUEPRINT_ONLY` presentations
 - `U1 — RESERVE HANGAR`
+- `GOLEM-EXPEDITION-LIVE-LOOP-01`
+  - Purpose: decide whether an in-progress Expedition state, intermediate decisions, and player intervention (`CONTINUE` / `RETREAT`) belong in the canonical mechanic.
+  - Status: `D0 PASS / OPTION B APPROVED`; D1 and D2 are `FROZEN / PASS`; live-loop D3.1–D3.6 are `COMPLETE / PASS`; Canonical Promotion remains `HOLD`.
+  - Dependencies: none. This is an independent design gate and does not require Phase E2 or Presentation E3 to be completed first.
+  - Boundary: live-loop implementation is D3; the separately reserved Presentation E3 remains unstarted and is not authorized by this gate.
+  - Gate record: [`design/GOLEM_EXPEDITION_LIVE_LOOP_01_GATE.md`](design/GOLEM_EXPEDITION_LIVE_LOOP_01_GATE.md).
+  - Frozen contract: [`design/GOLEM_EXPEDITION_LIVE_LOOP_01_CANONICAL_CONTRACT.md`](design/GOLEM_EXPEDITION_LIVE_LOOP_01_CANONICAL_CONTRACT.md).
+  - Frozen vectors: [`design/GOLEM_EXPEDITION_LIVE_LOOP_01_D2_TEST_VECTORS.md`](design/GOLEM_EXPEDITION_LIVE_LOOP_01_D2_TEST_VECTORS.md).
+  - D3 record: [`design/GOLEM_EXPEDITION_LIVE_LOOP_01_D3_IMPLEMENTATION.md`](design/GOLEM_EXPEDITION_LIVE_LOOP_01_D3_IMPLEMENTATION.md).
 
 Items on hold are not implied backlog priorities. They require observed player-facing need before reconsideration.
 

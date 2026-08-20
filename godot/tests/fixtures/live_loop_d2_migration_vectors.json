@@ -1,0 +1,31 @@
+{
+  "schema": "live-loop-d2-migration-vector-v1",
+  "target_save_version": 3,
+  "cases": [
+    {
+      "case_id": "legacy-v2-ready",
+      "input": {"save_version": 2, "expedition_runtime": null},
+      "expected": {"phase": "READY", "active_runtime": false, "inventory_delta": 0, "telemetry_delta": 0}
+    },
+    {
+      "case_id": "v3-decision-resume",
+      "input": {"save_version": 3, "phase": "DECISION", "expedition_id": "exp-fixed", "decision_id": "decision-002", "decision_sequence": 2},
+      "expected": {"phase": "DECISION", "expedition_id": "exp-fixed", "decision_id": "decision-002", "decision_sequence": 2, "damage_applications": 0, "cargo_applications": 0, "telemetry_delta": 0}
+    },
+    {
+      "case_id": "v3-in-progress-recover",
+      "input": {"save_version": 3, "phase": "IN_PROGRESS", "expedition_id": "exp-fixed", "decision_id": "decision-002", "command_id": "command-continue-002", "checkpoint_prefix_damage": 22},
+      "expected": {"recovery_count": 1, "command_id": "command-continue-002", "duplicate_damage": 0, "duplicate_cargo": 0, "duplicate_telemetry": 0}
+    },
+    {
+      "case_id": "v3-returned-pending-cargo",
+      "input": {"save_version": 3, "phase": "RETURNED", "expedition_id": "exp-fixed", "pending_cargo_ids": ["exp-fixed:item:001"]},
+      "expected": {"phase": "RETURNED", "owned_inventory_delta_before_claim": 0, "pending_cargo_ids": ["exp-fixed:item:001"]}
+    },
+    {
+      "case_id": "v3-destroyed-no-cargo",
+      "input": {"save_version": 3, "phase": "DESTROYED", "expedition_id": "exp-fixed", "unit_durability": 0, "pending_cargo_ids": []},
+      "expected": {"phase": "DESTROYED", "unit_retained": true, "unit_durability": 0, "owned_inventory_delta": 0, "blueprint_delta": 0}
+    }
+  ]
+}

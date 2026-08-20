@@ -1,0 +1,270 @@
+# GOLEM-EXPEDITION-LIVE-LOOP-01 — D3 Implementation
+
+```text
+STATUS          COMPLETE / PASS
+PHASE           D3 — LIVE-LOOP IMPLEMENTATION
+D1 CONTRACT     FROZEN / PASS
+D2 VECTORS      FROZEN / PASS
+PRESENTATION E3 SEPARATE / NOT AUTHORIZED
+RUNTIME PROMOTION HOLD
+MAIN MERGE      HOLD
+```
+
+## Naming boundary
+
+`D3` exclusively names implementation of `GOLEM-EXPEDITION-LIVE-LOOP-01`.
+The existing Presentation E3 name remains reserved for PC gaze hierarchy and
+layout work. Neither phase implies or authorizes the other.
+
+## Authorization decision
+
+D3 is authorized because the canonical direction, state and transaction
+contract, component-wise damage mapping, golden vectors, and migration
+fixtures are frozen. Authorization permits incremental implementation against
+those artifacts; it does not authorize runtime promotion or `MAIN MERGE`.
+
+## Implementation slices
+
+```text
+D3.1  PURE STEP EVALUATOR             PASS
+D3.2  CANONICAL STATE TRANSACTIONS    PASS
+D3.3  PERSISTENCE / RECOVERY          PASS
+D3.4  CARGO / TELEMETRY COMMIT        PASS
+D3.5  UI BINDING                      PASS
+D3.6  RUNTIME / REGRESSION            PASS
+```
+
+### D3.1 evidence
+
+`godot/domain/expedition_live_loop.gd` projects the frozen legacy evaluator
+output into exact ENTRY, HAZARD, ENCOUNTER, and RECOVERY steps. It introduces
+no random roll, clock, mutable hidden state, component redistribution, or new
+balance rule. Every plan and step projection is derived solely from its input.
+
+`godot/tests/run_all.gd` checks all 5,120 D2 vectors, all frozen component and
+prefix values, each reachable step result, and rejection of unreachable steps.
+
+Local official Godot 4.7.1 result after completing D3.2:
+
+```text
+GODOT-PORT: PASS — 190150 checks
+```
+
+### D3.2 exactly-once boundary
+
+The state-transaction test submits the same `CONTINUE` command twice for every
+reachable step across all 5,120 D2 golden vectors (10,368 step projections).
+This covers ordinary `DECISION`, successful final `RETURNED`, and destruction
+at ENTRY, HAZARD, or ENCOUNTER. The second submission returns the exact
+recorded result while the complete committed state remains equal: durability,
+pending cargo, events, telemetry, and inventory are not reapplied or mutated.
+Duplicate lookup occurs before current-phase validation because a successful
+first command has already advanced the decision.
+
+RETURN uses the same coverage from the outset: all 10,368 reachable D2
+decision points execute an initial `RETURN` and the same command again. Tests
+prove exact recorded-result replay, complete-state equality, preserved
+durability and pending cargo, no inventory mutation, and exactly-once events.
+Normal return records `PLAYER_RETURN`, the deepest completed step, and commits
+`RETURNED` without resolving the next step.
+
+Both transactions fail closed for missing command identity, wrong expedition,
+stale decision, invalid phase, and deployed UNIT lock mismatch. CONTINUE also
+rejects a projection for any step other than the runtime's frozen next step.
+
+## Next boundary
+
+### D3.3 step-2 crash boundary
+
+The first persistence slice performs two durable writes: the step-2
+`IN_PROGRESS` intent before evaluation, then the complete committed state after
+recovery or ordinary completion. Writes use a temporary file and recoverable
+backup replacement so at least one prior valid checkpoint remains readable.
+
+A child Godot process writes only the `IN_PROGRESS` intent and immutable
+pre-command checkpoint, then forcibly terminates itself. The parent process
+proves that no code after termination ran, reads the real runtime file, derives
+the step again from the checkpoint's frozen damage plan, applies the command
+once, and durably replaces the intent with the committed decision. A second
+reload returns that committed state without applying damage or events again.
+
+```text
+LOCAL GODOT 4.7.1  PASS — 190204 checks
+```
+
+The final-replacement test then force-terminates child processes at all three
+durability boundaries: after temporary-file flush, after moving the prior
+checkpoint to backup, and after promoting the replacement. Each interruption
+leaves the correct durable generation readable, and the prior checkpoint is
+retained whenever replacement has begun.
+
+Runtime loading fails closed for malformed JSON, unknown phase, missing stable
+IDs, mismatched UNIT lock, incomplete `IN_PROGRESS` intent, and invalid
+`DESTROYED` durability or cargo. It never silently clears an invalid run.
+
+All five frozen D2 migration fixtures now execute through the versioned loader:
+legacy v2 to READY, v3 DECISION resume, exactly-once IN_PROGRESS recovery,
+RETURNED pending-cargo separation, and DESTROYED non-invasion. Unsupported save
+versions fail closed.
+
+D3.3 completed the persistence prerequisite used by the following D3.4 slice.
+
+### D3.4 cargo and telemetry ownership boundary
+
+Claim is an independent canonical transaction available only in `RETURNED`.
+It validates stable expedition and command identity, normalizes duplicate
+selection entries, requires positive integer quantities and cataloged cargo,
+and enforces pending quantity and total capacity. A valid claim transfers only
+the selected quantities to owned inventory, closes pending cargo, records the
+unselected remainder as discarded, and commits a stable claim result. Invalid
+input returns the complete original state unchanged.
+
+The same claim command returns its recorded result without crediting inventory
+again. Real child-process interruption tests cover both sides of the canonical
+commit: before commit, and after commit but before acknowledgement. Retry and
+reload produce exactly one inventory credit and cannot restore claimable cargo.
+
+D3.2 domain events now carry stable IDs. D3.4 commits them and the claim event
+to the durable telemetry collection in the same canonical generation, deduped
+by event identity. Failure of an optional external telemetry export returns an
+error without changing or blocking canonical gameplay state.
+
+```text
+D3.4-G1  RETURNED leaves owned inventory unchanged                         PASS
+D3.4-G2  explicit valid claim transfers exactly selected cargo             PASS
+D3.4-G3  invalid claim is fail-closed                                       PASS
+D3.4-G4  same claim cannot credit inventory twice                          PASS
+D3.4-G5  reload before claim preserves pending cargo                       PASS
+D3.4-G6  reload after claim cannot restore claimable cargo                 PASS
+D3.4-G7  D3.2 events reach durable telemetry                               PASS
+D3.4-G8  retry/reload does not duplicate telemetry identity                PASS
+D3.4-G9  telemetry sink failure preserves canonical gameplay state         PASS
+
+LOCAL GODOT 4.7.1  PASS — 190230 checks
+```
+
+D3.4 completed the ownership boundary consumed by the following D3.5 binding.
+
+### D3.5 presentation and command binding
+
+The UI binding consumes an immutable presentation model and an injected state
+command port. `CONTINUE`, `RETURN`, and `CLAIM` controls call only that port;
+the UI imports neither domain nor state implementation and contains no cargo,
+durability, inventory, persistence, telemetry, identity-allocation, or phase
+mutation. The state port is the sole adapter to the frozen D3.2–D3.4
+transactions and persists successful results before updating its snapshot.
+
+A static mutation guard scans every `ui/` script for direct `GameState` field
+assignment. It separately rejects domain/state implementation imports and
+canonical field assignment in the live-loop controls, and verifies that all
+three actions route through the approved command port. Functional binding tests
+prove that the presenter derives command availability, CONTINUE and RETURN use
+the state transaction facade, RETURN exposes cargo without transferring it,
+and CLAIM invokes the D3.4 ownership transaction.
+
+```text
+D3.5-G1  ui/ contains no direct GameState field mutation             PASS
+D3.5-G2  live-loop UI imports no domain/state implementation         PASS
+D3.5-G3  CONTINUE/RETURN/CLAIM route only through command port       PASS
+D3.5-G4  presenter model alone determines visible controls           PASS
+D3.5-G5  UI binding owns no canonical calculation or mutation        PASS
+
+LOCAL GODOT 4.7.1  PASS — 190241 checks
+```
+
+D3.5 is complete. D3.6 runtime/regression remains a separate authorization
+decision; D3.5 does not promote the live-loop runtime or release `MAIN MERGE`.
+
+## D3.6 runtime/regression contract
+
+### Legacy instant-resolution disposition
+
+The selected policy is **staged replacement**, not permanent runtime
+coexistence and not evaluator deletion.
+
+```text
+LEGACY DAMAGE EVALUATOR       RETAIN — COMPONENT ORACLE
+LEGACY 5,120 DAMAGE AUDIT     RETAIN — REGRESSION EVIDENCE
+LEGACY ATOMIC RUNTIME PATH    TEMPORARY UNTIL PROMOTION
+LIVE-LOOP CANDIDATE PATH      D3.6 TEST TARGET
+POST-PROMOTION DEPLOY ROUTE   LIVE-LOOP ONLY
+```
+
+The existing evaluator remains the one source for resist, mobility, encounter,
+failure stage, and whole-run total. D3.1 step projections must continue to equal
+its components and prefixes exactly. The 5,120 audit is therefore not obsolete:
+it proves balance equivalence and guards against redistribution.
+
+The old `start_expedition` atomic state transaction is not a second canonical
+mode. It remains reachable only while the candidate runtime is unpromoted so
+the current Draft PR continues to run. D3.6 must not add a player-facing mode
+switch. If Canonical Promotion later passes, that promotion must atomically
+route every new DEPLOY through the live-loop entry point and make the old atomic
+transaction unreachable. Its pure evaluator helpers and audit remain.
+
+### D3.6 goal
+
+D3.6 proves integration consistency rather than adding another isolated
+feature. Its required evidence is:
+
+```text
+1. DEPLOY -> CONTINUE... -> RETURNED/DESTROYED end-to-end vectors
+2. Early RETURN at every stable decision preserves the exact damage prefix
+3. RETURNED -> CLAIM -> closed runtime -> READY completes one full loop
+4. Inventory, cargo, events, telemetry, ACTION, and durability commit once
+5. Save/reload and forced interruption remain exact across the combined loop
+6. Full-continue terminal damage/component outcome equals every D2 vector
+7. Existing 5,120 instant-resolution audit remains green as oracle evidence
+8. No new runtime entry can choose atomic versus live-loop behavior
+```
+
+For successful vectors, full CONTINUE resolves all four steps and reaches the
+same final durability and total damage as the legacy evaluator. For destruction
+vectors, the exact frozen destroying step terminates the run and later steps
+remain unreachable. For early RETURN vectors, only the committed prefix may
+affect durability. CLAIM is exercised only after `RETURNED`; DESTROYED never
+transfers cargo or mutates Blueprint/inventory.
+
+### Phase boundary
+
+```text
+D3.6 CONTRACT       FROZEN
+D3.6 IMPLEMENTATION PASS
+CANONICAL PROMOTION HOLD
+LEGACY ROUTE FLIP   HOLD — ONLY AS PART OF CANONICAL PROMOTION
+MAIN MERGE          HOLD
+```
+
+### D3.6 evidence and verdict
+
+The combined runtime harness executes all 5,120 D2 vectors. Blocked DEPLOY is
+fail-closed and consumes no ACTION. Every accessible vector opens without
+damage, resolves each reachable component through explicit CONTINUE commands,
+and reaches the exact legacy terminal durability. Successful runs release the
+fixed reward plan only at RECOVERY, then complete CLAIM and close to READY;
+destroyed runs clear cargo and leave inventory and Blueprints unchanged.
+
+All 10,368 stable decision points also execute early RETURN. Each preserves
+exactly the frozen prefix before the unresolved step and transfers no cargo.
+A separate explicit RETURN -> empty CLAIM -> READY loop proves legal closure
+without inventory mutation.
+
+The persisted combined loop reloads after DEPLOY and after every step-2 intent,
+recovers each CONTINUE exactly once, commits CLAIM, closes READY, and reloads
+the final ACTION, durability, inventory, telemetry, and runtime state. Static
+regression rejects a player-facing runtime selector or second DEPLOY entry.
+
+```text
+D3.6-G1  all 5,120 vectors match legacy terminal oracle              PASS
+D3.6-G2  all 10,368 decision points preserve early-return prefix     PASS
+D3.6-G3  DEPLOY/CONTINUE/RETURN/CLAIM/READY loops integrate          PASS
+D3.6-G4  combined persistence and recovery remains exactly-once      PASS
+D3.6-G5  legacy evaluator and 5,120 audit remain active              PASS
+D3.6-G6  no player-facing atomic/live-loop selector exists           PASS
+
+GODOT-PORT  PASS — 224531 checks
+```
+
+D3 is complete. This is implementation evidence, not Canonical Promotion.
+The current application route remains unchanged until a separate promotion
+decision atomically selects the live-loop entry for all new DEPLOY commands.

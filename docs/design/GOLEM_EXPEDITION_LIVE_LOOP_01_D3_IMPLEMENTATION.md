@@ -27,8 +27,8 @@ those artifacts; it does not authorize runtime promotion or `MAIN MERGE`.
 
 ```text
 D3.1  PURE STEP EVALUATOR             PASS
-D3.2  CANONICAL STATE TRANSACTIONS    IN PROGRESS — IDEMPOTENCY SLICE PASS
-D3.3  PERSISTENCE / RECOVERY          HOLD
+D3.2  CANONICAL STATE TRANSACTIONS    PASS
+D3.3  PERSISTENCE / RECOVERY          NEXT
 D3.4  CARGO / TELEMETRY COMMIT        HOLD
 D3.5  UI BINDING                      HOLD
 D3.6  RUNTIME / REGRESSION             HOLD
@@ -44,10 +44,10 @@ balance rule. Every plan and step projection is derived solely from its input.
 `godot/tests/run_all.gd` checks all 5,120 D2 vectors, all frozen component and
 prefix values, each reachable step result, and rejection of unreachable steps.
 
-Local official Godot 4.7.1 result after expanding the D3.2 idempotency slice:
+Local official Godot 4.7.1 result after completing D3.2:
 
 ```text
-GODOT-PORT: PASS — 107190 checks
+GODOT-PORT: PASS — 190150 checks
 ```
 
 ### D3.2 exactly-once boundary
@@ -61,9 +61,20 @@ pending cargo, events, telemetry, and inventory are not reapplied or mutated.
 Duplicate lookup occurs before current-phase validation because a successful
 first command has already advanced the decision.
 
+RETURN uses the same coverage from the outset: all 10,368 reachable D2
+decision points execute an initial `RETURN` and the same command again. Tests
+prove exact recorded-result replay, complete-state equality, preserved
+durability and pending cargo, no inventory mutation, and exactly-once events.
+Normal return records `PLAYER_RETURN`, the deepest completed step, and commits
+`RETURNED` without resolving the next step.
+
+Both transactions fail closed for missing command identity, wrong expedition,
+stale decision, invalid phase, and deployed UNIT lock mismatch. CONTINUE also
+rejects a projection for any step other than the runtime's frozen next step.
+
 ## Next boundary
 
-D3.2 may continue adding canonical state transitions only through the D1
-transaction ordering and D2 identities. Persistence, cargo commitment,
+D3.3 may now implement versioned persistence and recovery of the exact
+`IN_PROGRESS` command intent from its immutable checkpoint. Cargo commitment,
 telemetry emission, and UI binding remain held until their named slices begin
 and pass their own tests.

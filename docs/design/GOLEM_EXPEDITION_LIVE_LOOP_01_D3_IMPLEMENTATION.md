@@ -28,8 +28,8 @@ those artifacts; it does not authorize runtime promotion or `MAIN MERGE`.
 ```text
 D3.1  PURE STEP EVALUATOR             PASS
 D3.2  CANONICAL STATE TRANSACTIONS    PASS
-D3.3  PERSISTENCE / RECOVERY          IN PROGRESS — STEP-2 CRASH PASS
-D3.4  CARGO / TELEMETRY COMMIT        HOLD
+D3.3  PERSISTENCE / RECOVERY          PASS
+D3.4  CARGO / TELEMETRY COMMIT        NEXT
 D3.5  UI BINDING                      HOLD
 D3.6  RUNTIME / REGRESSION             HOLD
 ```
@@ -89,10 +89,23 @@ once, and durably replaces the intent with the committed decision. A second
 reload returns that committed state without applying damage or events again.
 
 ```text
-LOCAL GODOT 4.7.1  PASS — 190156 checks
+LOCAL GODOT 4.7.1  PASS — 190204 checks
 ```
 
-D3.3 remains in progress. The remaining work includes the frozen D2 migration
-fixtures, recovery from interrupted final replacement, and fail-closed invalid
-runtime coverage. Cargo commitment, telemetry emission, and UI binding remain
-held until their named slices begin and pass their own tests.
+The final-replacement test then force-terminates child processes at all three
+durability boundaries: after temporary-file flush, after moving the prior
+checkpoint to backup, and after promoting the replacement. Each interruption
+leaves the correct durable generation readable, and the prior checkpoint is
+retained whenever replacement has begun.
+
+Runtime loading fails closed for malformed JSON, unknown phase, missing stable
+IDs, mismatched UNIT lock, incomplete `IN_PROGRESS` intent, and invalid
+`DESTROYED` durability or cargo. It never silently clears an invalid run.
+
+All five frozen D2 migration fixtures now execute through the versioned loader:
+legacy v2 to READY, v3 DECISION resume, exactly-once IN_PROGRESS recovery,
+RETURNED pending-cargo separation, and DESTROYED non-invasion. Unsupported save
+versions fail closed.
+
+D3.3 is complete. D3.4 may now implement cargo commitment and stable telemetry.
+UI binding remains held until its named slice begins and passes its tests.

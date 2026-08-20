@@ -2,6 +2,8 @@ extends Control
 
 const Catalog = preload("res://domain/game_catalog.gd")
 const Blueprints = preload("res://domain/blueprint_library.gd")
+const ExpeditionPresenter = preload("res://presentation/expedition_presenter.gd")
+const ExpeditionQueries = preload("res://state/expedition_queries.gd")
 
 var tab := "workshop"
 var body_id := "stone"
@@ -13,9 +15,6 @@ var blueprint_modified := false
 var purpose_tags: Array = ["GENERAL"]
 var region_id := "region_quarry"
 var golem_id := ""
-var pending_expedition: Dictionary = {}
-var selected_loot: Array = []
-var loot_claimed := true
 
 var root: VBoxContainer
 var content: VBoxContainer
@@ -246,9 +245,15 @@ func _fabricate() -> void:
     _refresh()
 
 func _expedition() -> void:
-    _heading("EXPEDITION — PREDICTION = RESOLUTION DAMAGE PATH")
+    _heading("EXPEDITION — PHASE E1 / PC PROVISIONAL")
     var row := HBoxContainer.new()
-    row.add_child(_selector(Catalog.REGION_ORDER, Catalog.REGIONS, region_id, _region_changed))
+    var region_ids: Array = []
+    var region_catalog := {}
+    for option in ExpeditionQueries.region_options():
+        var id := String(option["id"])
+        region_ids.append(id)
+        region_catalog[id] = {"name": String(option["name"])}
+    row.add_child(_selector(region_ids, region_catalog, region_id, _region_changed))
     var unit_ids: Array = []
     var unit_catalog := {}
     for golem in GameState.golems:
@@ -258,19 +263,111 @@ func _expedition() -> void:
         golem_id = unit_ids[0]
     row.add_child(_selector(unit_ids, unit_catalog, golem_id, _golem_changed))
     content.add_child(row)
+
+    var snapshot := GameState.get_presentation_snapshot()
+    var prediction := ExpeditionQueries.prediction(snapshot, golem_id, region_id)
     var golem := GameState.get_golem(golem_id)
-    if not golem.is_empty():
-        var prediction := Catalog.predict_expedition(region_id, golem)
+    if prediction.get("ok", false) and not golem.is_empty():
         var label := Label.new()
         label.text = "PREDICTION %s | DAMAGE %d%% | DURABILITY %d%%\nPOWER %d | ARMOR %d | MOBILITY %d | WORK %d" % [prediction.get("status_prediction", "?"), prediction.get("total_damage", 0), golem["durability"], golem["stats"]["power"], golem["stats"]["armor"], golem["stats"]["mobility"], golem["stats"]["work"]]
         content.add_child(label)
         var deploy := Button.new()
         deploy.text = "DEPLOY — 1 ACTION"
-        deploy.disabled = GameState.actions_left <= 0 or prediction.get("status", "") == "BLOCKED" or (not pending_expedition.is_empty() and not loot_claimed)
+        deploy.disabled = GameState.actions_left <= 0 or prediction.get("status", "") == "BLOCKED" or GameState.has_pending_cargo()
         deploy.pressed.connect(_deploy)
         content.add_child(deploy)
-    if not pending_expedition.is_empty():
+
+    _e1_dashboard(ExpeditionPresenter.build(snapshot))
+    if not GameState.expedition_runtime.is_empty():
         _report()
+
+func _e1_dashboard(model: Dictionary) -> void:
+    _heading("E1 OBSERVATION BLOCKS — SOURCE CLASSIFIED")
+    var grid := GridContainer.new()
+    grid.columns = 3
+    grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+    var day_action: Dictionary = model["day_action"]
+    grid.add_child(_e1_panel("SYSTEM STATUS / GAME_STATE", [
+        "DAY %d" % int(day_action["day"]),
+        "ACTION %d" % int(day_action["actions_left"]),
+    ]))
+
+    var damage: Dictionary = model["damage"]
+    var stability: Dictionary = model["stability"]
+    grid.add_child(_e1_panel("DAMAGE / GAME_STATE", [
+        "HULL INTEGRITY %d%%" % int(damage["hull_integrity"]),
+        "DAMAGE %d%%" % int(damage["damage_percent"]),
+        "JOINT LOAD N/A",
+        "STABILITY %d / %s" % [int(stability["index"]), String(stability["basis"])],
+    ]))
+
+    var cargo: Dictionary = model["cargo"]
+    grid.add_child(_e1_panel("CARGO / GAME_STATE", [
+        "SELECTED %d / CANDIDATE %d" % [int(cargo["selected_count"]), int(cargo["candidate_count"])],
+        "WEIGHT %d / %d" % [int(cargo["selected_weight"]), int(cargo["capacity"])],
+        "CLAIMED %s" % str(bool(cargo["claimed"])),
+    ]))
+
+    var route: Dictionary = model["route"]
+    var navigation: Dictionary = model["navigation"]
+    grid.add_child(_e1_panel("ROUTE / NAVIGATION", [
+        "REGION %s" % (String(route["region_name"]) if not String(route["region_name"]).is_empty() else "—"),
+        "DEPTH N/A",
+        "STATE %s" % String(navigation["status"]),
+    ]))
+
+    var golem_status: Dictionary = model["golem_status"]
+    var stats: Dictionary = golem_status["stats"]
+    grid.add_child(_e1_panel("GOLEM STATUS / MIXED", [
+        String(golem_status["name"]),
+        "CORE %s / EFF N/A" % String(golem_status["core_id"]),
+        "SIGIL %s / EFF N/A" % String(golem_status["rune_id"]),
+        "P%d A%d M%d W%d" % [int(stats.get("power", 0)), int(stats.get("armor", 0)), int(stats.get("mobility", 0)), int(stats.get("work", 0))],
+    ]))
+
+    var analyzer: Dictionary = model["analyzer"]
+    grid.add_child(_e1_panel("ANALYZER / PRESENTATION", [
+        "POWER %.2f" % float(analyzer["power"]),
+        "ARMOR %.2f" % float(analyzer["armor"]),
+        "MOBILITY %.2f" % float(analyzer["mobility"]),
+        "WORK %.2f" % float(analyzer["work"]),
+    ]))
+
+    var area_lines: Array = []
+    for cell in model["area_map"]:
+        area_lines.append("%s %s" % [">" if bool(cell["current"]) else "·", String(cell["name"])])
+    grid.add_child(_e1_panel("AREA MAP / PRESENTATION", area_lines))
+
+    grid.add_child(_e1_panel("SIGNAL / PRESENTATION", [
+        "SIGNAL STRENGTH N/A",
+        "MAG. NOISE N/A",
+        "STATUS UNAVAILABLE",
+    ]))
+    content.add_child(grid)
+
+    var log_lines: Array = []
+    for row in model["log"]:
+        log_lines.append(String(row["label"]))
+    if log_lines.is_empty():
+        log_lines.append("NO EXPEDITION EVENTS")
+    content.add_child(_e1_panel("LOG / STRUCTURED EVENT STREAM", log_lines))
+
+func _e1_panel(title_text: String, lines: Array) -> PanelContainer:
+    var panel := PanelContainer.new()
+    panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    var box := VBoxContainer.new()
+    var title := Label.new()
+    title.text = title_text
+    title.add_theme_font_size_override("font_size", 13)
+    box.add_child(title)
+    for line in lines:
+        var label := Label.new()
+        label.text = String(line)
+        label.add_theme_font_size_override("font_size", 11)
+        box.add_child(label)
+    panel.add_child(box)
+    return panel
 
 func _region_changed(_index: int, selector: OptionButton) -> void:
     region_id = String(selector.get_item_metadata(selector.selected))
@@ -283,60 +380,45 @@ func _deploy() -> void:
     var result := GameState.start_expedition(golem_id, region_id)
     if not result.get("ok", false):
         _notice(String(result.get("error", "DEPLOY BLOCKED")))
-        return
-    pending_expedition = result
-    selected_loot = []
-    loot_claimed = result["report"].get("loots", []).is_empty()
-    _refresh()
 
 func _report() -> void:
-    var report: Dictionary = pending_expedition["report"]
-    _heading("REPORT — %s | DAMAGE %d%% | CARGO %d" % [report["status"], report["total_damage"], pending_expedition["cargo_capacity"]])
+    var runtime: Dictionary = GameState.expedition_runtime
+    var report: Dictionary = runtime.get("report", {})
+    if report.is_empty():
+        return
+    _heading("REPORT — %s | DAMAGE %d%% | CARGO %d" % [report["status"], report["total_damage"], runtime["cargo_capacity"]])
+    var selected_indexes: Array = runtime.get("selected_loot_indexes", [])
+    var claimed := bool(runtime.get("loot_claimed", true))
     for i in range(report.get("loots", []).size()):
         var loot: Dictionary = report["loots"][i]
         var check := CheckButton.new()
         check.text = "%s x%d | weight %d" % [loot["name"], loot["count"], loot["weight"]]
-        check.button_pressed = selected_loot.has(i)
-        check.disabled = loot_claimed
+        check.button_pressed = selected_indexes.has(i)
+        check.disabled = claimed
         check.toggled.connect(_loot_toggled.bind(i))
         content.add_child(check)
     if not report.get("loots", []).is_empty():
         var weight := Label.new()
-        weight.text = "SELECTED WEIGHT %d / %d" % [_cargo_weight(), pending_expedition["cargo_capacity"]]
+        weight.text = "SELECTED WEIGHT %d / %d" % [GameState.expedition_selected_cargo_weight(), runtime["cargo_capacity"]]
         content.add_child(weight)
         var claim := Button.new()
         claim.text = "CONFIRM CARGO"
-        claim.disabled = loot_claimed
+        claim.disabled = claimed
         claim.pressed.connect(_claim_cargo)
         content.add_child(claim)
 
 func _loot_toggled(enabled: bool, index: int) -> void:
-    if enabled and not selected_loot.has(index):
-        selected_loot.append(index)
-        if _cargo_weight() > int(pending_expedition["cargo_capacity"]):
-            selected_loot.erase(index)
-            _notice("CARGO CAPACITY EXCEEDED")
-    elif not enabled:
-        selected_loot.erase(index)
-    _refresh()
-
-func _cargo_weight() -> int:
-    var total := 0
-    if pending_expedition.is_empty():
-        return total
-    var loots: Array = pending_expedition["report"].get("loots", [])
-    for i in selected_loot:
-        total += int(loots[int(i)]["weight"])
-    return total
+    var result := GameState.set_expedition_loot_selected(index, enabled)
+    if not result.get("ok", false):
+        _notice(String(result.get("error", "CARGO SELECTION FAILED")))
+        _refresh()
 
 func _claim_cargo() -> void:
-    var chosen: Array = []
-    var loots: Array = pending_expedition["report"].get("loots", [])
-    for i in selected_loot:
-        chosen.append(loots[int(i)])
-    loot_claimed = true
-    GameState.add_loot(chosen)
-    _notice("CARGO STORED")
+    var result := GameState.claim_expedition_cargo()
+    if result.get("ok", false):
+        _notice("CARGO STORED")
+    else:
+        _notice(String(result.get("error", "CARGO CLAIM FAILED")))
 
 func _golems() -> void:
     _heading("UNIT HANGAR — 3 UNIT LIMIT")

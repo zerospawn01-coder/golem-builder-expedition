@@ -4,6 +4,7 @@ const Catalog = preload("res://domain/game_catalog.gd")
 const Fabrication = preload("res://domain/fabrication.gd")
 const BlueprintLibrary = preload("res://domain/blueprint_library.gd")
 const ExpeditionPresenter = preload("res://presentation/expedition_presenter.gd")
+const D2Vectors = preload("res://tests/live_loop_d2_vectors.gd")
 
 var failures: Array[String] = []
 var checks := 0
@@ -13,6 +14,8 @@ func _init() -> void:
     _test_damage_consistency()
     _test_blueprint_behavioral_metrics()
     _test_presentation_determinism()
+    _test_live_loop_d2_vectors()
+    _test_live_loop_d2_migration_vectors()
     if failures.is_empty():
         print("GODOT-PORT: PASS — %d checks" % checks)
         quit(0)
@@ -177,3 +180,46 @@ func _test_presentation_determinism() -> void:
     _check(not rendered_log.contains("THIS PREFORMATTED TEXT MUST BE IGNORED"), "E1-DATA-05 presenter must ignore preformatted log text")
     for event in snapshot["expedition_runtime"]["report"]["events"]:
         _check(not event.has("title") and not event.has("message"), "E1-DATA-05 structured event contains presentation text")
+
+func _test_live_loop_d2_vectors() -> void:
+    var file := FileAccess.open("res://tests/fixtures/live_loop_d2_damage_vectors.tsv", FileAccess.READ)
+    _check(file != null, "D2-VECTOR golden file must exist")
+    if file == null:
+        return
+    var raw_lines := file.get_as_text().split("\n", false)
+    file.close()
+    var expected := D2Vectors.build_all()
+    _check(raw_lines.size() == 5121, "D2-VECTOR expected one header plus 5120 golden rows, got %d" % raw_lines.size())
+    _check(expected.size() == 5120, "D2-VECTOR generator expected 5120 rows, got %d" % expected.size())
+    var expected_lines := D2Vectors.to_tsv(expected).split("\n", false)
+    _check(raw_lines[0] == expected_lines[0], "D2-VECTOR header mismatch")
+    var seen := {}
+    for i in range(mini(raw_lines.size() - 1, expected.size())):
+        _check(raw_lines[i + 1] == expected_lines[i + 1], "D2-VECTOR mismatch at row %d / %s" % [i, expected[i].get("vector_id", "unknown")])
+        seen[String(expected[i]["vector_id"])] = true
+    _check(seen.size() == 5120, "D2-VECTOR IDs must be unique")
+    var first_serialized := D2Vectors.to_tsv(expected)
+    var second_serialized := D2Vectors.to_tsv(D2Vectors.build_all())
+    _check(first_serialized == second_serialized, "D2-VECTOR generation must be byte deterministic")
+
+func _test_live_loop_d2_migration_vectors() -> void:
+    var file := FileAccess.open("res://tests/fixtures/live_loop_d2_migration_vectors.json", FileAccess.READ)
+    _check(file != null, "D2-MIGRATION fixture must exist")
+    if file == null:
+        return
+    var parsed: Variant = JSON.parse_string(file.get_as_text())
+    file.close()
+    _check(typeof(parsed) == TYPE_DICTIONARY, "D2-MIGRATION fixture must parse")
+    if typeof(parsed) != TYPE_DICTIONARY:
+        return
+    var fixture: Dictionary = parsed
+    _check(String(fixture.get("schema", "")) == "live-loop-d2-migration-vector-v1", "D2-MIGRATION schema")
+    _check(int(fixture.get("target_save_version", -1)) == 3, "D2-MIGRATION target save version")
+    var cases: Array = fixture.get("cases", [])
+    _check(cases.size() == 5, "D2-MIGRATION expected five boundary cases")
+    var ids := {}
+    for raw_case in cases:
+        var migration_case: Dictionary = raw_case
+        ids[String(migration_case.get("case_id", ""))] = true
+    for required in ["legacy-v2-ready", "v3-decision-resume", "v3-in-progress-recover", "v3-returned-pending-cargo", "v3-destroyed-no-cargo"]:
+        _check(ids.has(required), "D2-MIGRATION missing %s" % required)

@@ -26,7 +26,7 @@ func continue_current() -> Dictionary:
     var intent := Store.persist_continue_intent(_path, _state, command)
     if not intent.get("ok", false):
         return intent
-    var projection := LiveLoop.project_step(runtime.get("damage_plan", {}), int(runtime.get("next_step_index", -1)))
+    var projection := LiveLoop.project_runtime_step(runtime)
     var applied := LiveLoop.apply_continue(_state, command, projection)
     return _commit(applied)
 

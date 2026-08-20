@@ -58,8 +58,7 @@ static func load_and_recover(path: String) -> Dictionary:
     var checkpoint: Dictionary = runtime.get("pre_command_checkpoint", {})
     var command: Dictionary = runtime.get("pending_command", {})
     var checkpoint_runtime: Dictionary = checkpoint.get("runtime", {})
-    var plan: Dictionary = checkpoint_runtime.get("damage_plan", {})
-    var projection := LiveLoop.project_step(plan, int(checkpoint_runtime.get("next_step_index", -1)))
+    var projection := LiveLoop.project_runtime_step(checkpoint_runtime)
     if not projection.get("ok", false):
         return {"ok": false, "error": "RECOVERY_PROJECTION_INVALID"}
     var applied := LiveLoop.apply_continue(checkpoint, command, projection)
@@ -118,8 +117,10 @@ static func _validate_state(state: Dictionary) -> Dictionary:
         return {"ok": false, "error": "RUNTIME_STATE_INVALID"}
     var runtime: Dictionary = state["runtime"]
     var phase := String(runtime.get("phase", ""))
-    if not ["DECISION", "IN_PROGRESS", "RETURNED", "DESTROYED"].has(phase):
+    if not ["READY", "DECISION", "IN_PROGRESS", "RETURNED", "DESTROYED"].has(phase):
         return {"ok": false, "error": "RUNTIME_PHASE_INVALID"}
+    if phase == "READY":
+        return {"ok": true}
     if String(runtime.get("expedition_id", "")).is_empty() or String(runtime.get("unit_id", "")).is_empty():
         return {"ok": false, "error": "RUNTIME_ID_INVALID"}
     if String(state["unit"].get("id", "")) != String(runtime["unit_id"]):

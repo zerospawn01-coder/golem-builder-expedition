@@ -3,6 +3,33 @@ extends RefCounted
 
 const STEP_IDS := ["ENTRY", "HAZARD", "ENCOUNTER", "RECOVERY"]
 
+static func apply_deploy(state: Dictionary, command: Dictionary, plan: Dictionary, reward_plan: Array) -> Dictionary:
+    var next := state.duplicate(true)
+    var command_id := String(command.get("command_id", ""))
+    var expedition_id := String(command.get("expedition_id", ""))
+    var decision_id := String(command.get("decision_id", ""))
+    var existing_runtime: Dictionary = next.get("runtime", {})
+    if not command_id.is_empty() and String(existing_runtime.get("deploy_command_id", "")) == command_id:
+        return {"ok": true, "duplicate": true, "state": next, "result": {"phase": existing_runtime.get("phase", ""), "expedition_id": existing_runtime.get("expedition_id", ""), "decision_id": existing_runtime.get("decision_id", "")}}
+    if command_id.is_empty() or expedition_id.is_empty() or decision_id.is_empty():
+        return {"ok": false, "error": "DEPLOY_ID_REQUIRED", "state": next}
+    if not existing_runtime.is_empty() and String(existing_runtime.get("phase", "READY")) != "READY":
+        return {"ok": false, "error": "EXPEDITION_ACTIVE", "state": next}
+    if int(next.get("actions_left", 0)) <= 0:
+        return {"ok": false, "error": "NO_ACTION", "state": next}
+    if not plan.get("ok", false):
+        return {"ok": false, "error": "DAMAGE_PLAN_INVALID", "state": next}
+    var unit: Dictionary = next.get("unit", {})
+    if String(unit.get("id", "")) != String(command.get("unit_id", "")):
+        return {"ok": false, "error": "UNIT_LOCK_MISMATCH", "state": next}
+    next["actions_left"] = int(next["actions_left"]) - 1
+    next["runtime"] = {"phase": "DECISION", "expedition_id": expedition_id, "decision_id": decision_id, "unit_id": unit["id"], "next_step_index": 0, "durability": unit.get("durability", 0), "pending_cargo": [], "reward_plan": reward_plan.duplicate(true), "step_results": [], "command_results": {}, "claim_results": {}, "claim_state": "OPEN", "damage_plan": plan.duplicate(true), "deploy_command_id": command_id}
+    var events: Array = next.get("events", []).duplicate(true)
+    events.append({"event_id": "%s:%s:expedition_started" % [expedition_id, command_id], "type": "expedition_started", "command_id": command_id, "expedition_id": expedition_id, "decision_id": decision_id})
+    events.append({"event_id": "%s:%s:decision_presented" % [expedition_id, decision_id], "type": "decision_presented", "expedition_id": expedition_id, "decision_id": decision_id, "step_id": "ENTRY"})
+    next["events"] = events
+    return {"ok": true, "state": next, "result": {"phase": "DECISION", "expedition_id": expedition_id, "decision_id": decision_id}}
+
 static func build_damage_plan(evaluation: Dictionary, starting_durability: int) -> Dictionary:
     if not evaluation.get("ok", false):
         return {"ok": false, "error": "INVALID_EVALUATION"}
@@ -64,6 +91,12 @@ static func project_step(plan: Dictionary, step_index: int) -> Dictionary:
     output["step_index"] = step_index
     output["terminal_status"] = "DESTROYED" if bool(step["destroys"]) else ("RETURNED" if String(step["step_id"]) == "RECOVERY" else "DECISION")
     return output
+
+static func project_runtime_step(runtime: Dictionary) -> Dictionary:
+    var projection := project_step(runtime.get("damage_plan", {}), int(runtime.get("next_step_index", -1)))
+    if projection.get("ok", false):
+        projection["cargo_delta"] = runtime.get("reward_plan", []).duplicate(true) if String(projection.get("step_id", "")) == "RECOVERY" else []
+    return projection
 
 static func apply_continue(state: Dictionary, command: Dictionary, projection: Dictionary) -> Dictionary:
     var next := state.duplicate(true)
@@ -261,3 +294,12 @@ static func export_telemetry(state: Dictionary, sink: Callable) -> Dictionary:
     var snapshot := state.duplicate(true)
     var accepted := bool(sink.call(snapshot.get("durable_telemetry", []).duplicate(true)))
     return {"ok": accepted, "error": "TELEMETRY_SINK_FAILED" if not accepted else "", "state": snapshot}
+
+static func close_claimed(state: Dictionary) -> Dictionary:
+    var next := state.duplicate(true)
+    var runtime: Dictionary = next.get("runtime", {})
+    if String(runtime.get("phase", "")) != "RETURNED" or String(runtime.get("claim_state", "")) != "CLAIMED" or not runtime.get("pending_cargo", []).is_empty():
+        return {"ok": false, "error": "CLAIM_NOT_CLOSED", "state": next}
+    next["last_expedition"] = {"expedition_id": runtime.get("expedition_id", ""), "phase": "RETURNED", "claim_state": "CLAIMED", "step_results": runtime.get("step_results", []).duplicate(true)}
+    next["runtime"] = {"phase": "READY"}
+    return {"ok": true, "state": next}

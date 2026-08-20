@@ -33,6 +33,9 @@ func _init() -> void:
     _test_live_loop_claim_crash_retries()
     _test_live_loop_ui_mutation_guard()
     _test_live_loop_command_port_and_binding()
+    _test_live_loop_d3_6_end_to_end_vectors()
+    _test_live_loop_d3_6_persisted_full_cycle()
+    _test_live_loop_d3_6_no_dual_runtime_entry()
     if failures.is_empty():
         print("GODOT-PORT: PASS — %d checks" % checks)
         quit(0)
@@ -568,3 +571,103 @@ func _test_live_loop_command_port_and_binding() -> void:
         for target in [absolute, "%s.bak" % absolute, "%s.tmp" % absolute]:
             if FileAccess.file_exists(target):
                 DirAccess.remove_absolute(target)
+
+func _test_live_loop_d3_6_end_to_end_vectors() -> void:
+    var completed := 0
+    var destroyed := 0
+    var blocked := 0
+    var early_returns := 0
+    for vector in D2Vectors.build_all():
+        var input: Dictionary = vector["input"]
+        var golem := Catalog.make_golem(String(input["frame_id"]), String(input["reactor_id"]), String(input["control_sigil_id"]), "unit-e2e", 0, false)
+        golem["durability"] = int(input["starting_durability"])
+        var evaluation := Catalog.evaluate_expedition_damage(String(input["region_id"]), golem)
+        var plan := LiveLoop.build_damage_plan(evaluation, int(input["starting_durability"]))
+        var initial := {"actions_left": 3, "unit": {"id": "unit-e2e", "durability": int(input["starting_durability"])}, "runtime": {}, "inventory": {"crystal": 0}, "blueprints": {"frozen": true}, "events": [], "durable_telemetry": []}
+        var deploy_command := {"command_id": "deploy-%s" % vector["vector_id"], "expedition_id": "expedition-%s" % vector["vector_id"], "decision_id": "decision-0", "unit_id": "unit-e2e"}
+        var deployed := LiveLoop.apply_deploy(initial, deploy_command, plan, [{"item_id": "reward-1", "catalog_id": "crystal", "quantity": 1}])
+        if not bool(vector["legacy"]["has_access_key"]):
+            blocked += 1
+            _check(not deployed.get("ok", true) and deployed.get("state", {}) == initial, "D3.6 blocked DEPLOY is fail-closed %s" % vector["vector_id"])
+            continue
+        _check(deployed.get("ok", false) and int(deployed["state"]["actions_left"]) == 2 and int(deployed["state"]["unit"]["durability"]) == int(input["starting_durability"]), "D3.6 DEPLOY opens without damage %s" % vector["vector_id"])
+        var duplicate_deploy := LiveLoop.apply_deploy(deployed["state"], deploy_command, plan, [{"item_id": "reward-1", "catalog_id": "crystal", "quantity": 1}])
+        _check(duplicate_deploy.get("ok", false) and duplicate_deploy.get("duplicate", false) and duplicate_deploy.get("state", {}) == deployed["state"], "D3.6 DEPLOY exactly-once %s" % vector["vector_id"])
+        var state: Dictionary = deployed["state"]
+        var command_sequence := 0
+        while String(state["runtime"]["phase"]) == "DECISION":
+            var projection := LiveLoop.project_runtime_step(state["runtime"])
+            command_sequence += 1
+            var command := {"expedition_id": state["runtime"]["expedition_id"], "decision_id": state["runtime"]["decision_id"], "command_id": "continue-%d" % command_sequence, "next_decision_id": "decision-%d" % command_sequence}
+            var advanced := LiveLoop.apply_continue(state, command, projection)
+            _check(advanced.get("ok", false), "D3.6 CONTINUE full loop %s/%d" % [vector["vector_id"], command_sequence])
+            state = LiveLoop.commit_telemetry(advanced["state"])
+        var expected_durability := maxi(0, int(input["starting_durability"]) - int(vector["legacy"]["total_damage"]))
+        _check(int(state["unit"]["durability"]) == expected_durability and state["blueprints"] == initial["blueprints"], "D3.6 terminal equals legacy oracle %s" % vector["vector_id"])
+        if String(state["runtime"]["phase"]) == "DESTROYED":
+            destroyed += 1
+            _check(state["runtime"]["pending_cargo"].is_empty() and state["inventory"] == initial["inventory"], "D3.6 DESTROYED invades no ownership %s" % vector["vector_id"])
+        else:
+            completed += 1
+            var claimed := LiveLoop.apply_claim(state, {"expedition_id": state["runtime"]["expedition_id"], "command_id": "claim-final"}, [{"item_id": "reward-1", "quantity": 1}], {"crystal": {"weight": 1}}, 1)
+            var closed := LiveLoop.close_claimed(claimed.get("state", {}))
+            _check(claimed.get("ok", false) and int(claimed["state"]["inventory"]["crystal"]) == 1 and closed.get("ok", false) and String(closed["state"]["runtime"]["phase"]) == "READY", "D3.6 RETURNED CLAIM READY %s" % vector["vector_id"])
+        for decision_step in range(vector["steps"].size()):
+            if not bool(vector["steps"][decision_step]["reachable"]):
+                continue
+            early_returns += 1
+            var early: Dictionary = LiveLoop.apply_deploy(initial, deploy_command, plan, [])["state"]
+            for resolved_step in range(decision_step):
+                var projection := LiveLoop.project_runtime_step(early["runtime"])
+                var advanced := LiveLoop.apply_continue(early, {"expedition_id": early["runtime"]["expedition_id"], "decision_id": early["runtime"]["decision_id"], "command_id": "early-%d" % resolved_step, "next_decision_id": "early-decision-%d" % resolved_step}, projection)
+                early = advanced["state"]
+            var returned := LiveLoop.apply_return(early, {"expedition_id": early["runtime"]["expedition_id"], "decision_id": early["runtime"]["decision_id"], "command_id": "return-%d" % decision_step})
+            var expected_prefix := int(vector["legacy"]["prefixes"][decision_step])
+            _check(returned.get("ok", false) and int(returned["state"]["unit"]["durability"]) == maxi(0, int(input["starting_durability"]) - expected_prefix) and returned["state"]["runtime"]["pending_cargo"].is_empty(), "D3.6 early RETURN prefix %s/%d" % [vector["vector_id"], decision_step])
+    _check(completed > 0 and destroyed > 0 and blocked > 0 and early_returns == 10368, "D3.6 vector coverage complete")
+
+func _test_live_loop_d3_6_persisted_full_cycle() -> void:
+    var path := "user://live-loop-d3-full-cycle.json"
+    var absolute := ProjectSettings.globalize_path(path)
+    for target in [absolute, "%s.bak" % absolute, "%s.tmp" % absolute]:
+        if FileAccess.file_exists(target):
+            DirAccess.remove_absolute(target)
+    var plan := LiveLoop.build_damage_plan({"ok": true, "status": "SUCCESS", "failure_stage": "", "resist_damage": 4, "mobility_damage": 3, "encounter_damage": 2, "total_damage": 9}, 100)
+    var initial := {"actions_left": 3, "unit": {"id": "unit-persisted", "durability": 100}, "runtime": {}, "inventory": {"crystal": 0}, "events": [], "durable_telemetry": []}
+    var deployed := LiveLoop.apply_deploy(initial, {"command_id": "deploy-1", "expedition_id": "expedition-persisted", "decision_id": "decision-0", "unit_id": "unit-persisted"}, plan, [{"item_id": "reward-persisted", "catalog_id": "crystal", "quantity": 2}])
+    var state: Dictionary = LiveLoop.commit_telemetry(deployed["state"])
+    _check(LiveLoopStore.persist_state(path, state).get("ok", false), "D3.6 persisted DEPLOY")
+    for step in range(4):
+        state = LiveLoopStore.load_and_recover(path)["state"]
+        var projection := LiveLoop.project_runtime_step(state["runtime"])
+        var command := {"expedition_id": state["runtime"]["expedition_id"], "decision_id": state["runtime"]["decision_id"], "command_id": "continue-persisted-%d" % step, "next_decision_id": "decision-%d" % (step + 1)}
+        _check(LiveLoopStore.persist_continue_intent(path, state, command).get("ok", false), "D3.6 persisted intent %d" % step)
+        var recovered := LiveLoopStore.load_and_recover(path)
+        _check(recovered.get("ok", false) and recovered.get("recovered", false), "D3.6 recovered combined step %d" % step)
+        state = recovered["state"]
+    var claimed := LiveLoopStore.commit_claim(path, state, {"expedition_id": "expedition-persisted", "command_id": "claim-persisted"}, [{"item_id": "reward-persisted", "quantity": 2}], {"crystal": {"weight": 1}}, 2)
+    var closed := LiveLoop.close_claimed(claimed["state"])
+    _check(LiveLoopStore.persist_state(path, closed["state"]).get("ok", false), "D3.6 persisted READY close")
+    var final := LiveLoopStore.load_and_recover(path)
+    _check(final.get("ok", false) and String(final["state"]["runtime"]["phase"]) == "READY" and int(final["state"]["unit"]["durability"]) == 91 and int(final["state"]["inventory"]["crystal"]) == 2 and int(final["state"]["actions_left"]) == 2, "D3.6 persisted full-cycle canonical outcome")
+    var return_cycle: Dictionary = deployed["state"]
+    for step in range(2):
+        var projection := LiveLoop.project_runtime_step(return_cycle["runtime"])
+        return_cycle = LiveLoop.apply_continue(return_cycle, {"expedition_id": return_cycle["runtime"]["expedition_id"], "decision_id": return_cycle["runtime"]["decision_id"], "command_id": "return-cycle-%d" % step, "next_decision_id": "return-cycle-decision-%d" % step}, projection)["state"]
+    return_cycle = LiveLoop.apply_return(return_cycle, {"expedition_id": return_cycle["runtime"]["expedition_id"], "decision_id": return_cycle["runtime"]["decision_id"], "command_id": "return-cycle-command"})["state"]
+    var empty_claim := LiveLoop.apply_claim(return_cycle, {"expedition_id": return_cycle["runtime"]["expedition_id"], "command_id": "return-cycle-claim"}, [], {"crystal": {"weight": 1}}, 2)
+    var return_closed := LiveLoop.close_claimed(empty_claim["state"])
+    _check(empty_claim.get("ok", false) and empty_claim["state"]["inventory"] == initial["inventory"] and return_closed.get("ok", false) and String(return_closed["state"]["runtime"]["phase"]) == "READY", "D3.6 explicit RETURN empty CLAIM READY loop")
+    for target in [absolute, "%s.bak" % absolute, "%s.tmp" % absolute]:
+        if FileAccess.file_exists(target):
+            DirAccess.remove_absolute(target)
+
+func _test_live_loop_d3_6_no_dual_runtime_entry() -> void:
+    var forbidden := ["use_live_loop", "instant_resolution_mode", "runtime_mode", "expedition_mode_switch"]
+    for path in ["res://ui/main.gd", "res://ui/main_e1.gd", "res://ui/expedition_live_loop_controls.gd", "res://state/game_state.gd", "res://state/expedition_live_loop_command_port.gd"]:
+        var source := FileAccess.open(path, FileAccess.READ).get_as_text().to_lower()
+        for token in forbidden:
+            _check(not source.contains(token), "D3.6 no runtime selector %s/%s" % [path, token])
+    var ui_source := FileAccess.open("res://ui/main.gd", FileAccess.READ).get_as_text()
+    var live_controls_source := FileAccess.open("res://ui/expedition_live_loop_controls.gd", FileAccess.READ).get_as_text()
+    _check(ui_source.count("GameState.start_expedition(") == 1 and not ui_source.contains("apply_deploy(") and not live_controls_source.contains("apply_deploy("), "D3.6 no second player-facing DEPLOY entry")

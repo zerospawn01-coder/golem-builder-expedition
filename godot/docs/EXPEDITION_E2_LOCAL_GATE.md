@@ -55,7 +55,7 @@ Future consideration is registered in the repository HOLD list as `GOLEM-EXPEDIT
 PURPOSE       Decide whether an in-progress Expedition state, intermediate
               decisions, and CONTINUE / RETREAT intervention belong in the
               canonical mechanic.
-STATUS        D0 PASS; D1/D2 FROZEN; LIVE-LOOP D3 IN PROGRESS
+STATUS        D0 PASS; D1/D2 FROZEN; LIVE-LOOP D3 COMPLETE / PASS
 DEPENDENCIES  NONE — independent design gate; Phase E2/Presentation E3 is not
               a prerequisite.
 ```

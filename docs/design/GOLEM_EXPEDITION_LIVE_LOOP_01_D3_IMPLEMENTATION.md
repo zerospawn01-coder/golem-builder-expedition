@@ -1,7 +1,7 @@
 # GOLEM-EXPEDITION-LIVE-LOOP-01 — D3 Implementation
 
 ```text
-STATUS          AUTHORIZED / IN PROGRESS
+STATUS          COMPLETE / PASS
 PHASE           D3 — LIVE-LOOP IMPLEMENTATION
 D1 CONTRACT     FROZEN / PASS
 D2 VECTORS      FROZEN / PASS
@@ -31,7 +31,7 @@ D3.2  CANONICAL STATE TRANSACTIONS    PASS
 D3.3  PERSISTENCE / RECOVERY          PASS
 D3.4  CARGO / TELEMETRY COMMIT        PASS
 D3.5  UI BINDING                      PASS
-D3.6  RUNTIME / REGRESSION            CONTRACT FROZEN / IMPLEMENTATION NEXT
+D3.6  RUNTIME / REGRESSION            PASS
 ```
 
 ### D3.1 evidence
@@ -229,8 +229,42 @@ transfers cargo or mutates Blueprint/inventory.
 
 ```text
 D3.6 CONTRACT       FROZEN
-D3.6 IMPLEMENTATION NEXT
+D3.6 IMPLEMENTATION PASS
 CANONICAL PROMOTION HOLD
 LEGACY ROUTE FLIP   HOLD — ONLY AS PART OF CANONICAL PROMOTION
 MAIN MERGE          HOLD
 ```
+
+### D3.6 evidence and verdict
+
+The combined runtime harness executes all 5,120 D2 vectors. Blocked DEPLOY is
+fail-closed and consumes no ACTION. Every accessible vector opens without
+damage, resolves each reachable component through explicit CONTINUE commands,
+and reaches the exact legacy terminal durability. Successful runs release the
+fixed reward plan only at RECOVERY, then complete CLAIM and close to READY;
+destroyed runs clear cargo and leave inventory and Blueprints unchanged.
+
+All 10,368 stable decision points also execute early RETURN. Each preserves
+exactly the frozen prefix before the unresolved step and transfers no cargo.
+A separate explicit RETURN -> empty CLAIM -> READY loop proves legal closure
+without inventory mutation.
+
+The persisted combined loop reloads after DEPLOY and after every step-2 intent,
+recovers each CONTINUE exactly once, commits CLAIM, closes READY, and reloads
+the final ACTION, durability, inventory, telemetry, and runtime state. Static
+regression rejects a player-facing runtime selector or second DEPLOY entry.
+
+```text
+D3.6-G1  all 5,120 vectors match legacy terminal oracle              PASS
+D3.6-G2  all 10,368 decision points preserve early-return prefix     PASS
+D3.6-G3  DEPLOY/CONTINUE/RETURN/CLAIM/READY loops integrate          PASS
+D3.6-G4  combined persistence and recovery remains exactly-once      PASS
+D3.6-G5  legacy evaluator and 5,120 audit remain active              PASS
+D3.6-G6  no player-facing atomic/live-loop selector exists           PASS
+
+GODOT-PORT  PASS — 224531 checks
+```
+
+D3 is complete. This is implementation evidence, not Canonical Promotion.
+The current application route remains unchanged until a separate promotion
+decision atomically selects the live-loop entry for all new DEPLOY commands.

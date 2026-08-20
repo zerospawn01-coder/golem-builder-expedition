@@ -60,7 +60,7 @@ RELEASE READY    NO
 - `U1 — RESERVE HANGAR`
 - `GOLEM-EXPEDITION-LIVE-LOOP-01`
   - Purpose: decide whether an in-progress Expedition state, intermediate decisions, and player intervention (`CONTINUE` / `RETREAT`) belong in the canonical mechanic.
-  - Status: `D0 PASS / OPTION B APPROVED`; D1 contract and D2 deterministic vectors are `FROZEN / PASS`; live-loop D3 implementation is `AUTHORIZED / IN PROGRESS`.
+  - Status: `D0 PASS / OPTION B APPROVED`; D1 and D2 are `FROZEN / PASS`; live-loop D3.1–D3.6 are `COMPLETE / PASS`; Canonical Promotion remains `HOLD`.
   - Dependencies: none. This is an independent design gate and does not require Phase E2 or Presentation E3 to be completed first.
   - Boundary: live-loop implementation is D3; the separately reserved Presentation E3 remains unstarted and is not authorized by this gate.
   - Gate record: [`design/GOLEM_EXPEDITION_LIVE_LOOP_01_GATE.md`](design/GOLEM_EXPEDITION_LIVE_LOOP_01_GATE.md).

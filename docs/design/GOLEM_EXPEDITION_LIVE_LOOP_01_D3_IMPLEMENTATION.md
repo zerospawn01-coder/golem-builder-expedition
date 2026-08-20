@@ -31,7 +31,7 @@ D3.2  CANONICAL STATE TRANSACTIONS    PASS
 D3.3  PERSISTENCE / RECOVERY          PASS
 D3.4  CARGO / TELEMETRY COMMIT        PASS
 D3.5  UI BINDING                      PASS
-D3.6  RUNTIME / REGRESSION            NEXT DECISION
+D3.6  RUNTIME / REGRESSION            CONTRACT FROZEN / IMPLEMENTATION NEXT
 ```
 
 ### D3.1 evidence
@@ -174,3 +174,63 @@ LOCAL GODOT 4.7.1  PASS — 190241 checks
 
 D3.5 is complete. D3.6 runtime/regression remains a separate authorization
 decision; D3.5 does not promote the live-loop runtime or release `MAIN MERGE`.
+
+## D3.6 runtime/regression contract
+
+### Legacy instant-resolution disposition
+
+The selected policy is **staged replacement**, not permanent runtime
+coexistence and not evaluator deletion.
+
+```text
+LEGACY DAMAGE EVALUATOR       RETAIN — COMPONENT ORACLE
+LEGACY 5,120 DAMAGE AUDIT     RETAIN — REGRESSION EVIDENCE
+LEGACY ATOMIC RUNTIME PATH    TEMPORARY UNTIL PROMOTION
+LIVE-LOOP CANDIDATE PATH      D3.6 TEST TARGET
+POST-PROMOTION DEPLOY ROUTE   LIVE-LOOP ONLY
+```
+
+The existing evaluator remains the one source for resist, mobility, encounter,
+failure stage, and whole-run total. D3.1 step projections must continue to equal
+its components and prefixes exactly. The 5,120 audit is therefore not obsolete:
+it proves balance equivalence and guards against redistribution.
+
+The old `start_expedition` atomic state transaction is not a second canonical
+mode. It remains reachable only while the candidate runtime is unpromoted so
+the current Draft PR continues to run. D3.6 must not add a player-facing mode
+switch. If Canonical Promotion later passes, that promotion must atomically
+route every new DEPLOY through the live-loop entry point and make the old atomic
+transaction unreachable. Its pure evaluator helpers and audit remain.
+
+### D3.6 goal
+
+D3.6 proves integration consistency rather than adding another isolated
+feature. Its required evidence is:
+
+```text
+1. DEPLOY -> CONTINUE... -> RETURNED/DESTROYED end-to-end vectors
+2. Early RETURN at every stable decision preserves the exact damage prefix
+3. RETURNED -> CLAIM -> closed runtime -> READY completes one full loop
+4. Inventory, cargo, events, telemetry, ACTION, and durability commit once
+5. Save/reload and forced interruption remain exact across the combined loop
+6. Full-continue terminal damage/component outcome equals every D2 vector
+7. Existing 5,120 instant-resolution audit remains green as oracle evidence
+8. No new runtime entry can choose atomic versus live-loop behavior
+```
+
+For successful vectors, full CONTINUE resolves all four steps and reaches the
+same final durability and total damage as the legacy evaluator. For destruction
+vectors, the exact frozen destroying step terminates the run and later steps
+remain unreachable. For early RETURN vectors, only the committed prefix may
+affect durability. CLAIM is exercised only after `RETURNED`; DESTROYED never
+transfers cargo or mutates Blueprint/inventory.
+
+### Phase boundary
+
+```text
+D3.6 CONTRACT       FROZEN
+D3.6 IMPLEMENTATION NEXT
+CANONICAL PROMOTION HOLD
+LEGACY ROUTE FLIP   HOLD — ONLY AS PART OF CANONICAL PROMOTION
+MAIN MERGE          HOLD
+```

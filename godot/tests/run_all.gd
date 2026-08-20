@@ -3,6 +3,7 @@ extends SceneTree
 const Catalog = preload("res://domain/game_catalog.gd")
 const Fabrication = preload("res://domain/fabrication.gd")
 const BlueprintLibrary = preload("res://domain/blueprint_library.gd")
+const ExpeditionPresenter = preload("res://presentation/expedition_presenter.gd")
 
 var failures: Array[String] = []
 var checks := 0
@@ -11,6 +12,7 @@ func _init() -> void:
     _test_fabrication()
     _test_damage_consistency()
     _test_blueprint_behavioral_metrics()
+    _test_presentation_determinism()
     if failures.is_empty():
         print("GODOT-PORT: PASS — %d checks" % checks)
         quit(0)
@@ -130,3 +132,48 @@ func _test_blueprint_behavioral_metrics() -> void:
 
     var invalid_metrics: Array = [{"type": "blueprint_modified", "blueprint_id": "bp"}, {"type": "blueprint_resaved", "blueprint_id": "bp"}, {"type": "blueprint_resaved", "blueprint_id": "bp"}]
     _check(not BlueprintLibrary.calculate_metrics(invalid_metrics).get("ok", true), "R2-BEH-05 metric invariant")
+
+func _test_presentation_determinism() -> void:
+    var golem := Catalog.make_golem("stone", "wind", "defense", "golem-fixed", 123, false)
+    golem["durability"] = 73
+    var snapshot := {
+        "day": 4,
+        "actions_left": 2,
+        "inventory": Catalog.DEFAULT_INVENTORY.duplicate(true),
+        "golems": [golem],
+        "active_golem_id": "golem-fixed",
+        "expedition_runtime": {
+            "golem_id": "golem-fixed",
+            "region_id": "region_quarry",
+            "cargo_capacity": 10,
+            "selected_loot_indexes": [0],
+            "loot_claimed": false,
+            "report": {
+                "region_id": "region_quarry",
+                "status": "SUCCESS",
+                "total_damage": 27,
+                "loots": [{"category": "body", "id": "stone", "name": "石材", "count": 2, "weight": 6}],
+                "logs": ["THIS PREFORMATTED TEXT MUST BE IGNORED"],
+                "events": [
+                    {"step": 1, "type": "entry", "damage": 0, "has_resist_key": true},
+                    {"step": 2, "type": "hazard", "damage": 0},
+                    {"step": 3, "type": "encounter", "damage": 27},
+                    {"step": 4, "type": "loot", "item_count": 1},
+                    {"step": 5, "type": "result", "status": "SUCCESS", "total_damage": 27},
+                ],
+            },
+        },
+    }
+    var before := snapshot.duplicate(true)
+    var first := ExpeditionPresenter.build(snapshot)
+    var second := ExpeditionPresenter.build(snapshot)
+    _check(first == second, "E1-DATA-06 Variant output must be deterministic")
+    _check(JSON.stringify(first) == JSON.stringify(second), "E1-DATA-06 serialized output must be deterministic")
+    _check(snapshot == before, "E1-DATA-04 presenter must not mutate source snapshot")
+    _check(first["stability"]["basis"] == "DURABILITY_PROXY" and int(first["stability"]["index"]) == 73, "E1-DATA-07 stability proxy basis")
+    _check(first["damage"]["joint_load"] == null and first["route"]["depth"] == null and first["signal"]["strength"] == null, "E1-DATA-07 unavailable concepts must remain null")
+    _check(int(first["cargo"]["selected_weight"]) == 6, "E1-DATA-01 cargo must derive from snapshot")
+    var rendered_log := JSON.stringify(first["log"])
+    _check(not rendered_log.contains("THIS PREFORMATTED TEXT MUST BE IGNORED"), "E1-DATA-05 presenter must ignore preformatted log text")
+    for event in snapshot["expedition_runtime"]["report"]["events"]:
+        _check(not event.has("title") and not event.has("message"), "E1-DATA-05 structured event contains presentation text")

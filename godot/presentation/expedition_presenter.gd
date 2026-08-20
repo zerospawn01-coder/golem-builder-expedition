@@ -81,7 +81,8 @@ static func _resolve_golem(snapshot: Dictionary, runtime: Dictionary) -> Diction
         if String(golem.get("id", "")) == target_id:
             return golem.duplicate(true)
     if not golems.is_empty():
-        return (golems[0] as Dictionary).duplicate(true)
+        var fallback: Dictionary = golems[0]
+        return fallback.duplicate(true)
     return {}
 
 static func _selected_weight(loots: Array, selected_indexes: Array) -> int:
@@ -89,7 +90,8 @@ static func _selected_weight(loots: Array, selected_indexes: Array) -> int:
     for value in selected_indexes:
         var index := int(value)
         if index >= 0 and index < loots.size():
-            total += int((loots[index] as Dictionary).get("weight", 0))
+            var loot: Dictionary = loots[index]
+            total += int(loot.get("weight", 0))
     return total
 
 static func _analyzer(stats: Dictionary) -> Dictionary:

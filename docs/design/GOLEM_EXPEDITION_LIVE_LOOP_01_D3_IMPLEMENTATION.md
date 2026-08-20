@@ -28,7 +28,7 @@ those artifacts; it does not authorize runtime promotion or `MAIN MERGE`.
 ```text
 D3.1  PURE STEP EVALUATOR             PASS
 D3.2  CANONICAL STATE TRANSACTIONS    PASS
-D3.3  PERSISTENCE / RECOVERY          NEXT
+D3.3  PERSISTENCE / RECOVERY          IN PROGRESS — STEP-2 CRASH PASS
 D3.4  CARGO / TELEMETRY COMMIT        HOLD
 D3.5  UI BINDING                      HOLD
 D3.6  RUNTIME / REGRESSION             HOLD
@@ -74,7 +74,25 @@ rejects a projection for any step other than the runtime's frozen next step.
 
 ## Next boundary
 
-D3.3 may now implement versioned persistence and recovery of the exact
-`IN_PROGRESS` command intent from its immutable checkpoint. Cargo commitment,
-telemetry emission, and UI binding remain held until their named slices begin
-and pass their own tests.
+### D3.3 step-2 crash boundary
+
+The first persistence slice performs two durable writes: the step-2
+`IN_PROGRESS` intent before evaluation, then the complete committed state after
+recovery or ordinary completion. Writes use a temporary file and recoverable
+backup replacement so at least one prior valid checkpoint remains readable.
+
+A child Godot process writes only the `IN_PROGRESS` intent and immutable
+pre-command checkpoint, then forcibly terminates itself. The parent process
+proves that no code after termination ran, reads the real runtime file, derives
+the step again from the checkpoint's frozen damage plan, applies the command
+once, and durably replaces the intent with the committed decision. A second
+reload returns that committed state without applying damage or events again.
+
+```text
+LOCAL GODOT 4.7.1  PASS — 190156 checks
+```
+
+D3.3 remains in progress. The remaining work includes the frozen D2 migration
+fixtures, recovery from interrupted final replacement, and fail-closed invalid
+runtime coverage. Cargo commitment, telemetry emission, and UI binding remain
+held until their named slices begin and pass their own tests.

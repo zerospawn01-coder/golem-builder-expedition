@@ -20,6 +20,18 @@ func _init() -> void:
             replace_survived.store_string("replacement did not terminate")
         quit(4)
         return
+    if args[0] == "claim":
+        var claim_state := {"unit": {"id": "unit-claim", "durability": 80}, "runtime": {"phase": "RETURNED", "expedition_id": "expedition-claim", "unit_id": "unit-claim", "pending_cargo": [{"item_id": "cargo-1", "catalog_id": "crystal", "quantity": 2}], "claim_state": "OPEN", "claim_results": {}}, "inventory": {"crystal": 5}, "events": [], "durable_telemetry": []}
+        if not Store.persist_state(args[1], claim_state).get("ok", false):
+            quit(3)
+            return
+        var claim_command := {"expedition_id": "expedition-claim", "command_id": "claim-command-1"}
+        Store.commit_claim_test_crash(args[1], claim_state, claim_command, [{"item_id": "cargo-1", "quantity": 2}], {"crystal": {"weight": 1}}, 4, args[3])
+        var claim_survived := FileAccess.open(args[2], FileAccess.WRITE)
+        if claim_survived != null:
+            claim_survived.store_string("claim did not terminate")
+        quit(4)
+        return
     var plan := LiveLoop.build_damage_plan({"ok": true, "status": "SUCCESS", "failure_stage": "", "resist_damage": 12, "mobility_damage": 8, "encounter_damage": 5, "total_damage": 25}, 100)
     var state := {
         "unit": {"id": "unit-crash", "durability": 100},

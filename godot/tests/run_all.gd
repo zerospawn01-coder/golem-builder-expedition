@@ -26,6 +26,8 @@ func _init() -> void:
     _test_live_loop_atomic_replacement_crashes()
     _test_live_loop_invalid_runtime_fails_closed()
     _test_live_loop_d2_migrations_execute()
+    _test_live_loop_claim_and_telemetry_boundaries()
+    _test_live_loop_claim_crash_retries()
     if failures.is_empty():
         print("GODOT-PORT: PASS — %d checks" % checks)
         quit(0)
@@ -456,3 +458,66 @@ func _test_live_loop_d2_migrations_execute() -> void:
         for key in migration_case["expected"]:
             _check(result.get(key, null) == migration_case["expected"][key], "D3.3-MIGRATION %s/%s" % [migration_case["case_id"], key])
     _check(LiveLoopStore.migrate_save({"save_version": 1}).get("error", "") == "SAVE_VERSION_UNSUPPORTED", "D3.3-MIGRATION unsupported version fails closed")
+
+func _test_live_loop_claim_and_telemetry_boundaries() -> void:
+    var catalog := {"crystal": {"weight": 1}, "ore": {"weight": 2}}
+    var state := {
+        "unit": {"id": "unit-claim", "durability": 80},
+        "runtime": {"phase": "RETURNED", "expedition_id": "expedition-claim", "unit_id": "unit-claim", "pending_cargo": [{"item_id": "cargo-crystal", "catalog_id": "crystal", "quantity": 4}, {"item_id": "cargo-ore", "catalog_id": "ore", "quantity": 2}], "claim_state": "OPEN", "claim_results": {}},
+        "inventory": {"crystal": 5, "ore": 1},
+        "events": [{"event_id": "expedition-claim:return:return_selected", "type": "return_selected"}, {"event_id": "expedition-claim:return:expedition_returned", "type": "expedition_returned"}],
+        "durable_telemetry": [],
+    }
+    _check(state["inventory"] == {"crystal": 5, "ore": 1}, "D3.4-G1 RETURNED inventory unchanged")
+    var command := {"expedition_id": "expedition-claim", "command_id": "claim-1"}
+    var selection := [{"item_id": "cargo-crystal", "quantity": 1}, {"item_id": "cargo-crystal", "quantity": 2}, {"item_id": "cargo-ore", "quantity": 1}]
+    var first := LiveLoop.apply_claim(state, command, selection, catalog, 5)
+    _check(first.get("ok", false) and not first.get("duplicate", true), "D3.4-G2 valid claim commits")
+    var committed: Dictionary = first["state"]
+    _check(committed["inventory"] == {"crystal": 8, "ore": 2} and committed["runtime"]["pending_cargo"].is_empty(), "D3.4-G2 selected cargo transfers once")
+    _check(committed["runtime"]["discarded_cargo"] == [{"item_id": "cargo-crystal", "catalog_id": "crystal", "quantity": 1}, {"item_id": "cargo-ore", "catalog_id": "ore", "quantity": 1}], "D3.4-G2 unselected cargo closes outside inventory")
+    var duplicate := LiveLoop.apply_claim(committed, command, selection, catalog, 5)
+    _check(duplicate.get("ok", false) and duplicate.get("duplicate", false) and duplicate["result"] == first["result"] and duplicate["state"] == committed, "D3.4-G4 duplicate claim is exact no-op")
+    var invalid_cases := [
+        [[{"item_id": "missing", "quantity": 1}], catalog, 5, "CLAIM_ITEM_NOT_PENDING"],
+        [[{"item_id": "cargo-crystal", "quantity": 5}], catalog, 5, "CLAIM_QUANTITY_EXCEEDED"],
+        [[{"item_id": "cargo-ore", "quantity": 2}], catalog, 3, "CLAIM_CAPACITY_EXCEEDED"],
+        [[{"item_id": "cargo-crystal", "quantity": 0}], catalog, 5, "CLAIM_SELECTION_INVALID"],
+        [[{"item_id": "cargo-crystal", "quantity": 1.5}], catalog, 5, "CLAIM_SELECTION_INVALID"],
+        [[{"item_id": "cargo-crystal", "quantity": 1}], {"ore": {"weight": 2}}, 5, "CLAIM_ITEM_NOT_CATALOGED"],
+    ]
+    for invalid in invalid_cases:
+        var result := LiveLoop.apply_claim(state, {"expedition_id": "expedition-claim", "command_id": "invalid-%s" % invalid[3]}, invalid[0], invalid[1], invalid[2])
+        _check(result.get("error", "") == invalid[3] and result.get("state", {}) == state, "D3.4-G3 fail closed %s" % invalid[3])
+    _check(committed["durable_telemetry"].size() == 3, "D3.4-G7 domain events reach durable telemetry")
+    _check(LiveLoop.commit_telemetry(committed) == committed, "D3.4-G8 telemetry identities do not duplicate")
+    var failed_export := LiveLoop.export_telemetry(committed, func(_events: Array) -> bool: return false)
+    _check(not failed_export.get("ok", true) and failed_export["state"] == committed, "D3.4-G9 telemetry sink failure preserves canonical state")
+
+func _test_live_loop_claim_crash_retries() -> void:
+    for stage in ["BEFORE_CANONICAL_COMMIT", "AFTER_CANONICAL_COMMIT_BEFORE_ACK"]:
+        var path := "user://live-loop-d3-claim-%s.json" % String(stage).to_lower()
+        var absolute := ProjectSettings.globalize_path(path)
+        var survived_path := "%s.survived" % path
+        var survived_absolute := ProjectSettings.globalize_path(survived_path)
+        for target in [absolute, "%s.bak" % absolute, "%s.tmp" % absolute, survived_absolute]:
+            if FileAccess.file_exists(target):
+                DirAccess.remove_absolute(target)
+        var args := PackedStringArray(["--headless", "--path", ProjectSettings.globalize_path("res://"), "--script", "res://tests/live_loop_d3_crash_probe.gd", "--", "claim", path, survived_path, stage])
+        var output: Array = []
+        var exit_code := OS.execute(OS.get_executable_path(), args, output, true)
+        _check(exit_code != 4 and not FileAccess.file_exists(survived_absolute), "D3.4-CRASH forced stop %s" % stage)
+        var loaded := LiveLoopStore.load_and_recover(path)
+        _check(loaded.get("ok", false), "D3.4-CRASH canonical generation readable %s" % stage)
+        var state: Dictionary = loaded.get("state", {})
+        var command := {"expedition_id": "expedition-claim", "command_id": "claim-command-1"}
+        var retry := LiveLoopStore.commit_claim(path, state, command, [{"item_id": "cargo-1", "quantity": 2}], {"crystal": {"weight": 1}}, 4)
+        _check(retry.get("ok", false), "D3.4-CRASH retry succeeds %s" % stage)
+        _check(int(retry["state"]["inventory"]["crystal"]) == 7 and retry["state"]["runtime"]["pending_cargo"].is_empty(), "D3.4-G5/G6 cargo credited exactly once %s" % stage)
+        var expected_duplicate: bool = stage == "AFTER_CANONICAL_COMMIT_BEFORE_ACK"
+        _check(bool(retry.get("duplicate", false)) == expected_duplicate, "D3.4-CRASH retry disposition %s" % stage)
+        var final_reload := LiveLoopStore.load_and_recover(path)
+        _check(final_reload.get("ok", false) and int(final_reload["state"]["inventory"]["crystal"]) == 7 and final_reload["state"]["runtime"]["pending_cargo"].is_empty(), "D3.4-G6 reload cannot restore claimable cargo %s" % stage)
+        for target in [absolute, "%s.bak" % absolute, "%s.tmp" % absolute, survived_absolute]:
+            if FileAccess.file_exists(target):
+                DirAccess.remove_absolute(target)

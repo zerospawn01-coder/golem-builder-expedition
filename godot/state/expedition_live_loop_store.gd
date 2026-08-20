@@ -16,6 +16,34 @@ static func persist_continue_intent(path: String, state: Dictionary, command: Di
     intent["runtime"] = runtime
     return _write_atomic(path, {"schema": SCHEMA, "state": intent})
 
+static func persist_state(path: String, state: Dictionary) -> Dictionary:
+    var validation := _validate_state(state)
+    if not validation.get("ok", false):
+        return validation
+    return _write_atomic(path, {"schema": SCHEMA, "state": state.duplicate(true)})
+
+static func commit_claim(path: String, state: Dictionary, command: Dictionary, selection: Array, catalog: Dictionary, capacity: int) -> Dictionary:
+    var claimed := LiveLoop.apply_claim(state, command, selection, catalog, capacity)
+    if not claimed.get("ok", false):
+        return claimed
+    var written := persist_state(path, claimed["state"])
+    if not written.get("ok", false):
+        return {"ok": false, "error": written.get("error", "CLAIM_COMMIT_FAILED"), "state": state.duplicate(true)}
+    return claimed
+
+static func commit_claim_test_crash(path: String, state: Dictionary, command: Dictionary, selection: Array, catalog: Dictionary, capacity: int, crash_stage: String) -> Dictionary:
+    if crash_stage == "BEFORE_CANONICAL_COMMIT":
+        OS.kill(OS.get_process_id())
+    var claimed := LiveLoop.apply_claim(state, command, selection, catalog, capacity)
+    if not claimed.get("ok", false):
+        return claimed
+    var written := persist_state(path, claimed["state"])
+    if not written.get("ok", false):
+        return written
+    if crash_stage == "AFTER_CANONICAL_COMMIT_BEFORE_ACK":
+        OS.kill(OS.get_process_id())
+    return claimed
+
 static func load_and_recover(path: String) -> Dictionary:
     var loaded := _read_valid(path)
     if not loaded.get("ok", false):

@@ -5,15 +5,15 @@ const Catalog = preload("res://domain/game_catalog.gd")
 
 static func build(snapshot: Dictionary) -> Dictionary:
     var runtime: Dictionary = snapshot.get("expedition_runtime", {}).duplicate(true)
-    var golem := _resolve_golem(snapshot, runtime)
+    var golem: Dictionary = _resolve_golem(snapshot, runtime)
     var report: Dictionary = runtime.get("report", {}).duplicate(true)
     var stats: Dictionary = golem.get("stats", {}).duplicate(true)
-    var durability := clamp(int(golem.get("durability", 0)), 0, 100)
-    var region_id := String(runtime.get("region_id", ""))
+    var durability: int = clampi(int(golem.get("durability", 0)), 0, 100)
+    var region_id: String = String(runtime.get("region_id", ""))
     var region: Dictionary = Catalog.REGIONS.get(region_id, {})
     var selected_indexes: Array = runtime.get("selected_loot_indexes", []).duplicate(true)
     var loots: Array = report.get("loots", []).duplicate(true)
-    var selected_weight := _selected_weight(loots, selected_indexes)
+    var selected_weight: int = _selected_weight(loots, selected_indexes)
 
     return {
         "day_action": {
@@ -74,7 +74,7 @@ static func build(snapshot: Dictionary) -> Dictionary:
     }
 
 static func _resolve_golem(snapshot: Dictionary, runtime: Dictionary) -> Dictionary:
-    var target_id := String(runtime.get("golem_id", snapshot.get("active_golem_id", "")))
+    var target_id: String = String(runtime.get("golem_id", snapshot.get("active_golem_id", "")))
     var golems: Array = snapshot.get("golems", [])
     for item in golems:
         var golem: Dictionary = item
@@ -86,9 +86,9 @@ static func _resolve_golem(snapshot: Dictionary, runtime: Dictionary) -> Diction
     return {}
 
 static func _selected_weight(loots: Array, selected_indexes: Array) -> int:
-    var total := 0
+    var total: int = 0
     for value in selected_indexes:
-        var index := int(value)
+        var index: int = int(value)
         if index >= 0 and index < loots.size():
             var loot: Dictionary = loots[index]
             total += int(loot.get("weight", 0))
@@ -105,7 +105,7 @@ static func _analyzer(stats: Dictionary) -> Dictionary:
     }
 
 static func _normalize_axis(value: int) -> float:
-    return clamp(float(value) / 15.0, 0.0, 1.0)
+    return clampf(float(value) / 15.0, 0.0, 1.0)
 
 static func _area_map(current_region_id: String) -> Array:
     var cells: Array = []
@@ -125,9 +125,9 @@ static func _format_events(events: Array) -> Array:
         if typeof(raw) != TYPE_DICTIONARY:
             continue
         var event: Dictionary = raw
-        var event_type := String(event.get("type", "event"))
-        var step := int(event.get("step", 0))
-        var label := "STEP %d / %s" % [step, event_type.to_upper()]
+        var event_type: String = String(event.get("type", "event"))
+        var step: int = int(event.get("step", 0))
+        var label: String = "STEP %d / %s" % [step, event_type.to_upper()]
         if event_type == "entry":
             label += " / RESIST %d" % int(event.get("damage", 0))
         elif event_type == "hazard":

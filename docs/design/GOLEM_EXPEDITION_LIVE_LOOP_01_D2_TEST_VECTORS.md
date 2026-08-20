@@ -71,11 +71,15 @@ These are expected migration outcomes. D2 validates fixture structure; E3 must i
 - verifies row count, unique vector IDs, header, and byte-deterministic regeneration;
 - validates the migration fixture schema and all five required boundary cases.
 
-Local official Godot 4.7.1 result:
+Local and post-push GitHub-hosted official Godot 4.7.1 result:
 
 ```text
 GODOT-PORT: PASS — 15489 checks
 ```
+
+Primary CI log:
+
+<https://github.com/zerospawn01-coder/golem-builder-expedition/actions/runs/32367123941/job/96418957466>
 
 ## Phase boundary
 

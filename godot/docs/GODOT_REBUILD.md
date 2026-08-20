@@ -53,7 +53,7 @@ Verified on GitHub Actions using the official Godot 4.7.1 stable Linux x86_64 bu
 Godot version                         4.7.1.stable.official.a13da4feb
 Project import                        PASS
 Headless regression                   PASS
-Regression checks                     10,353
+Regression checks                     15,489
 Existing Node/React CI                PASS
 ```
 
@@ -81,7 +81,7 @@ React/Vite remains the comparison oracle until Godot parity, PC manual operation
 
 ```text
 PROJECT IMPORT             PASS
-HEADLESS REGRESSION        PASS — 10,353 checks
+HEADLESS REGRESSION        PASS — 15,489 checks
 FABRICATION TESTS          PASS
 DAMAGE AUDIT 5120          PASS
 R2 BEHAVIOR TESTS          PASS

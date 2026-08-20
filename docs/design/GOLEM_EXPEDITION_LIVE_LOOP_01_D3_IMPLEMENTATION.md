@@ -44,20 +44,22 @@ balance rule. Every plan and step projection is derived solely from its input.
 `godot/tests/run_all.gd` checks all 5,120 D2 vectors, all frozen component and
 prefix values, each reachable step result, and rejection of unreachable steps.
 
-Local official Godot 4.7.1 result after the D3.2 idempotency slice:
+Local official Godot 4.7.1 result after expanding the D3.2 idempotency slice:
 
 ```text
-GODOT-PORT: PASS — 34616 checks
+GODOT-PORT: PASS — 107190 checks
 ```
 
 ### D3.2 exactly-once boundary
 
-The first state-transaction test submits the same `CONTINUE` command twice
-with one stable `command_id`. The second submission returns the exact recorded
-result while the complete committed state remains byte-for-byte equivalent:
-durability, pending cargo, events, telemetry, and inventory are not reapplied
-or mutated. Duplicate lookup occurs before current-phase validation because a
-successful first command has already advanced the decision.
+The state-transaction test submits the same `CONTINUE` command twice for every
+reachable step across all 5,120 D2 golden vectors (10,368 step projections).
+This covers ordinary `DECISION`, successful final `RETURNED`, and destruction
+at ENTRY, HAZARD, or ENCOUNTER. The second submission returns the exact
+recorded result while the complete committed state remains equal: durability,
+pending cargo, events, telemetry, and inventory are not reapplied or mutated.
+Duplicate lookup occurs before current-phase validation because a successful
+first command has already advanced the decision.
 
 ## Next boundary
 

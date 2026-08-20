@@ -5,7 +5,7 @@ SOURCE BASELINE        main@74989d65
 ENGINE                 Godot 4.7.1 stable
 BRANCH                 feat/godot-rebuild
 PR                     #3
-STATUS                 IMPLEMENTED / RUNTIME VERIFIED / MAIN HOLD
+STATUS                 E2 REVIEW COMPLETE / MAIN HOLD
 CANONICAL RULES        UNCHANGED
 REACT WEB SOURCE       PRESERVED AS COMPARISON ORACLE
 ```
@@ -30,7 +30,7 @@ Implemented parity slice:
 - fail-closed Blueprint deserialization
 - JSON persistence
 - Workshop / Expedition / Unit Hangar Control UI
-- Phase E1 source-classified Expedition presentation
+- Phase E1 source-classified Expedition presentation with the Phase E2 PC hierarchy implementation and recorded design divergence
 
 ## Phase E1 presentation contract
 
@@ -86,6 +86,11 @@ FABRICATION TESTS          PASS
 DAMAGE AUDIT 5120          PASS
 R2 BEHAVIOR TESTS          PASS
 E1 PRESENTATION TESTS      PASS
+E2 REVIEW                  FAIL — E2-VIEW-02
+E2-VIEW-02 DISPOSITION     WON'T FIX / DESIGN DIVERGENCE
+MACHINE RUN                EXISTENCE + SUCCESS VERIFIED
+LOG CONTENT 10,353         LOCALLY VERIFIED / NOT INDEPENDENTLY VERIFIED
+FUTURE LIVE LOOP GATE      NOT STARTED / OUT OF SCOPE
 WEB REGRESSION CI          PASS
 MAIN SCENE MANUAL LAUNCH   NOT RUN
 PC INPUT                   NOT RUN
@@ -93,3 +98,5 @@ MOBILE TOUCH               NOT RUN
 3-DAY MANUAL LOOP          NOT RUN
 MAIN MERGE                 HOLD
 ```
+
+The future canonical design question is registered as `GOLEM-EXPEDITION-LIVE-LOOP-01`. Its dependency is explicitly `NONE`: it is independent and does not require Phase E2 or E3 completion. It is not authorized implementation work and must not be treated as a continuation of E2.

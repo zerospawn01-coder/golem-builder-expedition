@@ -2,7 +2,7 @@
 
 Status: canonical development decision
 
-Effective: 2026-08-14
+Effective: 2026-08-20
 
 This is a current, revisable decision record. Permanent phase and decision rules live in [`MVP_STATUS_AND_PLAYTEST_POLICY.md`](MVP_STATUS_AND_PLAYTEST_POLICY.md).
 
@@ -58,6 +58,11 @@ RELEASE READY    NO
 - Additional audit infrastructure
 - Additional standalone human testing of the current `GRAVITY_DEPTH_V0` and `U0_BLUEPRINT_ONLY` presentations
 - `U1 — RESERVE HANGAR`
+- `GOLEM-EXPEDITION-LIVE-LOOP-01`
+  - Purpose: decide whether an in-progress Expedition state, intermediate decisions, and player intervention (`CONTINUE` / `RETREAT`) belong in the canonical mechanic.
+  - Status: `NOT STARTED / OUT OF SCOPE`.
+  - Dependencies: none. This is an independent design gate and does not require Phase E2 or E3 to be completed first.
+  - Boundary: it is not continuation work for E2 and does not authorize gameplay or presentation implementation.
 
 Items on hold are not implied backlog priorities. They require observed player-facing need before reconsideration.
 

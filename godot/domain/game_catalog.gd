@@ -119,7 +119,7 @@ static func get_golem_traits(body_id: String, core_id: String, rune_id: String) 
     return traits
 
 static func generate_golem_name(body_id: String, core_id: String, rune_id: String) -> String:
-    var special := {
+    var special: Dictionary = {
         "stone-fire-attack": "火炎石像ゴーレム",
         "iron-earth-defense": "城塞ゴーレム",
         "wood-wind-speed": "疾風飛空木偶",
@@ -129,12 +129,12 @@ static func generate_golem_name(body_id: String, core_id: String, rune_id: Strin
         "wood-fire-attack": "爆炎機巧木偶",
         "clay-earth-defense": "大地の泥巨人",
     }
-    var key := "%s-%s-%s" % [body_id, core_id, rune_id]
+    var key: String = "%s-%s-%s" % [body_id, core_id, rune_id]
     if special.has(key):
-        return special[key]
-    var core_prefix := {"fire": "火炎の", "water": "流水の", "wind": "疾風の", "earth": "金剛の"}
-    var body_noun := {"stone": "石像", "iron": "鋼鉄兵", "wood": "木偶", "clay": "泥人形"}
-    var rune_title := {"attack": " [破砕]", "defense": " [金剛]", "speed": " [飛空]", "regen": " [積載]"}
+        return String(special[key])
+    var core_prefix: Dictionary = {"fire": "火炎の", "water": "流水の", "wind": "疾風の", "earth": "金剛の"}
+    var body_noun: Dictionary = {"stone": "石像", "iron": "鋼鉄兵", "wood": "木偶", "clay": "泥人形"}
+    var rune_title: Dictionary = {"attack": " [破砕]", "defense": " [金剛]", "speed": " [飛空]", "regen": " [積載]"}
     return "%s%s%s" % [core_prefix.get(core_id, ""), body_noun.get(body_id, "ゴーレム"), rune_title.get(rune_id, "")]
 
 static func make_golem(body_id: String, core_id: String, rune_id: String, golem_id: String, created_at: int, starter := false) -> Dictionary:
@@ -158,11 +158,11 @@ static func evaluate_expedition_damage(region_id: String, golem: Dictionary) -> 
     var region: Dictionary = REGIONS[region_id]
     var stats: Dictionary = golem.get("stats", {})
     var traits: Array = golem.get("traits", [])
-    var durability := int(golem.get("durability", 100))
-    var access_trait := String(region.get("access_trait", ""))
-    var resist_trait := String(region.get("resist_trait", ""))
-    var has_access := access_trait.is_empty() or traits.has(access_trait)
-    var has_resist := resist_trait.is_empty() or traits.has(resist_trait)
+    var durability: int = int(golem.get("durability", 100))
+    var access_trait: String = String(region.get("access_trait", ""))
+    var resist_trait: String = String(region.get("resist_trait", ""))
+    var has_access: bool = access_trait.is_empty() or traits.has(access_trait)
+    var has_resist: bool = resist_trait.is_empty() or traits.has(resist_trait)
     if not has_access:
         return {
             "ok": true, "has_access_key": false, "has_resist_key": has_resist,
@@ -170,19 +170,19 @@ static func evaluate_expedition_damage(region_id: String, golem: Dictionary) -> 
             "total_damage": 0, "failure_stage": "", "status": "BLOCKED",
         }
 
-    var resist_damage := 0 if has_resist else int(region["danger_stars"]) * 22
-    var total_damage := resist_damage
+    var resist_damage: int = 0 if has_resist else int(region["danger_stars"]) * 22
+    var total_damage: int = resist_damage
     if total_damage >= durability:
         return {"ok": true, "has_access_key": true, "has_resist_key": has_resist, "resist_damage": resist_damage, "mobility_damage": 0, "encounter_damage": 0, "total_damage": total_damage, "failure_stage": "entry", "status": "FAILED"}
 
     var recommended: Dictionary = region["recommended"]
-    var mobility_diff := int(stats.get("mobility", 0)) - int(recommended["mobility"])
-    var mobility_damage := abs(mobility_diff) * 9 if mobility_diff < 0 else 0
+    var mobility_diff: int = int(stats.get("mobility", 0)) - int(recommended["mobility"])
+    var mobility_damage: int = abs(mobility_diff) * 9 if mobility_diff < 0 else 0
     total_damage += mobility_damage
     if total_damage >= durability:
         return {"ok": true, "has_access_key": true, "has_resist_key": has_resist, "resist_damage": resist_damage, "mobility_damage": mobility_damage, "encounter_damage": 0, "total_damage": total_damage, "failure_stage": "mobility", "status": "FAILED"}
 
-    var power_diff := int(stats.get("power", 0)) - int(recommended["power"])
+    var power_diff: int = int(stats.get("power", 0)) - int(recommended["power"])
     var armor_bonus: int = max(0, int(stats.get("armor", 0)) - int(recommended["armor"]))
     var base_encounter_damage: int = max(12, int(region["danger_stars"]) * 20 - armor_bonus * 2)
     var encounter_damage: int
@@ -191,8 +191,8 @@ static func evaluate_expedition_damage(region_id: String, golem: Dictionary) -> 
     else:
         encounter_damage = int(floor(float(base_encounter_damage) * 1.5 + float(abs(power_diff) * 6)))
     total_damage += encounter_damage
-    var failure_stage := "encounter" if total_damage >= durability else ""
-    var status := "FAILED" if not failure_stage.is_empty() else ("PARTIAL" if total_damage >= 55 else "SUCCESS")
+    var failure_stage: String = "encounter" if total_damage >= durability else ""
+    var status: String = "FAILED" if not failure_stage.is_empty() else ("PARTIAL" if total_damage >= 55 else "SUCCESS")
     return {
         "ok": true, "has_access_key": true, "has_resist_key": has_resist,
         "resist_damage": resist_damage, "mobility_damage": mobility_damage, "encounter_damage": encounter_damage,
@@ -200,13 +200,13 @@ static func evaluate_expedition_damage(region_id: String, golem: Dictionary) -> 
     }
 
 static func predict_expedition(region_id: String, golem: Dictionary) -> Dictionary:
-    var evaluation := evaluate_expedition_damage(region_id, golem)
+    var evaluation: Dictionary = evaluate_expedition_damage(region_id, golem)
     if not evaluation.get("ok", false):
         return evaluation
     var region: Dictionary = REGIONS[region_id]
     var recommended: Dictionary = region["recommended"]
     var stats: Dictionary = golem.get("stats", {})
-    var prediction := evaluation.duplicate(true)
+    var prediction: Dictionary = evaluation.duplicate(true)
     prediction["status_prediction"] = "BLOCKED" if evaluation["status"] == "BLOCKED" else ("DANGER" if evaluation["status"] == "FAILED" else ("PARTIAL" if evaluation["status"] == "PARTIAL" else "SAFE"))
     prediction["min_estimated_damage"] = evaluation["total_damage"]
     prediction["max_estimated_damage"] = evaluation["total_damage"]
@@ -240,7 +240,7 @@ static func _structured_events(damage: Dictionary, final_status: String, item_co
     return events
 
 static func run_expedition_simulation(region_id: String, golem: Dictionary, rng: RandomNumberGenerator) -> Dictionary:
-    var damage := evaluate_expedition_damage(region_id, golem)
+    var damage: Dictionary = evaluate_expedition_damage(region_id, golem)
     if not damage.get("ok", false):
         return {"ok": false, "error": damage.get("error", "DAMAGE_EVALUATION_FAILED")}
     var region: Dictionary = REGIONS[region_id]
@@ -252,15 +252,15 @@ static func run_expedition_simulation(region_id: String, golem: Dictionary, rng:
     var stats: Dictionary = golem["stats"]
     var loot_slot_count: int = min(3, 1 + int(floor(float(stats["work"]) / 5.0)))
     var work_quantity_bonus: int = 1 + int(floor(float(stats["work"]) / 6.0))
-    var has_mana_sense := golem.get("traits", []).has("mana_sense")
+    var has_mana_sense: bool = golem.get("traits", []).has("mana_sense")
     var selected_loots: Array = []
     var pool: Array = region["possible_loot"].duplicate(true)
     for _slot in range(loot_slot_count):
         if pool.is_empty():
             break
-        var random_index := rng.randi_range(0, pool.size() - 1)
+        var random_index: int = rng.randi_range(0, pool.size() - 1)
         var item: Dictionary = pool[random_index]
-        var drop_chance := 0.8
+        var drop_chance: float = 0.8
         if item["rarity"] == "uncommon":
             drop_chance = 0.55
         elif item["rarity"] == "rare":
@@ -268,17 +268,17 @@ static func run_expedition_simulation(region_id: String, golem: Dictionary, rng:
         if has_mana_sense:
             drop_chance += 0.2
         if rng.randf() < drop_chance:
-            var base_count := rng.randi_range(int(item["amount_min"]), int(item["amount_max"]))
+            var base_count: int = rng.randi_range(int(item["amount_min"]), int(item["amount_max"]))
             var final_count: int = max(1, base_count + work_quantity_bonus - 1)
-            var unit_weight := 3 if item["category"] == "body" else (2 if item["category"] == "core" else 1)
+            var unit_weight: int = 3 if item["category"] == "body" else (2 if item["category"] == "core" else 1)
             selected_loots.append({"category": item["category"], "id": item["id"], "name": item["name"], "count": final_count, "weight": unit_weight * final_count})
             pool.remove_at(random_index)
 
-    var final_status := "PARTIAL" if int(damage["total_damage"]) >= 55 else "SUCCESS"
+    var final_status: String = "PARTIAL" if int(damage["total_damage"]) >= 55 else "SUCCESS"
     if final_status == "PARTIAL":
         for loot in selected_loots:
             loot["count"] = max(1, int(floor(float(loot["count"]) * 0.5)))
-            var unit_weight := 3 if loot["category"] == "body" else (2 if loot["category"] == "core" else 1)
+            var unit_weight: int = 3 if loot["category"] == "body" else (2 if loot["category"] == "core" else 1)
             loot["weight"] = unit_weight * int(loot["count"])
     return {
         "ok": true, "region_id": region_id, "region_name": region["name"], "golem_name": golem["name"],

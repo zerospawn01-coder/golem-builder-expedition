@@ -358,7 +358,8 @@ func expedition_selected_cargo_weight() -> int:
     for value in expedition_runtime.get("selected_loot_indexes", []):
         var index := int(value)
         if index >= 0 and index < loots.size():
-            total += int((loots[index] as Dictionary).get("weight", 0))
+            var loot: Dictionary = loots[index]
+            total += int(loot.get("weight", 0))
     return total
 
 func set_expedition_loot_selected(index: int, selected: bool) -> Dictionary:
@@ -377,7 +378,8 @@ func set_expedition_loot_selected(index: int, selected: bool) -> Dictionary:
         next.erase(index)
     var weight := 0
     for value in next:
-        weight += int((loots[int(value)] as Dictionary).get("weight", 0))
+        var loot: Dictionary = loots[int(value)]
+        weight += int(loot.get("weight", 0))
     if weight > int(expedition_runtime.get("cargo_capacity", 0)):
         return {"ok": false, "error": "CARGO_CAPACITY_EXCEEDED"}
     expedition_runtime["selected_loot_indexes"] = next
@@ -395,7 +397,8 @@ func claim_expedition_cargo() -> Dictionary:
     for value in expedition_runtime.get("selected_loot_indexes", []):
         var index := int(value)
         if index >= 0 and index < loots.size():
-            chosen.append((loots[index] as Dictionary).duplicate(true))
+            var loot: Dictionary = loots[index]
+            chosen.append(loot.duplicate(true))
     for loot in chosen:
         var category := String(loot.get("category", ""))
         var item_id := String(loot.get("id", ""))

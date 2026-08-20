@@ -218,15 +218,36 @@ static func predict_expedition(region_id: String, golem: Dictionary) -> Dictiona
     }
     return prediction
 
+static func _structured_events(damage: Dictionary, final_status: String, item_count: int) -> Array:
+    var events: Array = []
+    if String(damage.get("status", "")) == "BLOCKED":
+        events.append({"step": 1, "type": "result", "status": "FAILED", "reason": "ACCESS_BLOCKED", "total_damage": 0})
+        return events
+    events.append({"step": 1, "type": "entry", "damage": int(damage.get("resist_damage", 0)), "has_resist_key": bool(damage.get("has_resist_key", false))})
+    if String(damage.get("failure_stage", "")) == "entry":
+        events.append({"step": 2, "type": "result", "status": "FAILED", "total_damage": int(damage.get("total_damage", 0))})
+        return events
+    events.append({"step": 2, "type": "hazard", "damage": int(damage.get("mobility_damage", 0))})
+    if String(damage.get("failure_stage", "")) == "mobility":
+        events.append({"step": 3, "type": "result", "status": "FAILED", "total_damage": int(damage.get("total_damage", 0))})
+        return events
+    events.append({"step": 3, "type": "encounter", "damage": int(damage.get("encounter_damage", 0))})
+    if String(damage.get("failure_stage", "")) == "encounter":
+        events.append({"step": 4, "type": "result", "status": "FAILED", "total_damage": int(damage.get("total_damage", 0))})
+        return events
+    events.append({"step": 4, "type": "loot", "item_count": item_count})
+    events.append({"step": 5, "type": "result", "status": final_status, "total_damage": int(damage.get("total_damage", 0))})
+    return events
+
 static func run_expedition_simulation(region_id: String, golem: Dictionary, rng: RandomNumberGenerator) -> Dictionary:
     var damage := evaluate_expedition_damage(region_id, golem)
     if not damage.get("ok", false):
         return {"ok": false, "error": damage.get("error", "DAMAGE_EVALUATION_FAILED")}
     var region: Dictionary = REGIONS[region_id]
     if damage["status"] == "BLOCKED":
-        return {"ok": true, "region_id": region_id, "region_name": region["name"], "golem_name": golem["name"], "logs": ["進入不可: 必須特性を満たしていません。"], "total_damage": 0, "loots": [], "status": "FAILED"}
+        return {"ok": true, "region_id": region_id, "region_name": region["name"], "golem_name": golem["name"], "events": _structured_events(damage, "FAILED", 0), "total_damage": 0, "loots": [], "status": "FAILED"}
     if damage["status"] == "FAILED":
-        return {"ok": true, "region_id": region_id, "region_name": region["name"], "golem_name": golem["name"], "logs": ["機体大破。獲得素材 0。"], "total_damage": damage["total_damage"], "loots": [], "status": "FAILED"}
+        return {"ok": true, "region_id": region_id, "region_name": region["name"], "golem_name": golem["name"], "events": _structured_events(damage, "FAILED", 0), "total_damage": damage["total_damage"], "loots": [], "status": "FAILED"}
 
     var stats: Dictionary = golem["stats"]
     var loot_slot_count: int = min(3, 1 + int(floor(float(stats["work"]) / 5.0)))
@@ -261,6 +282,6 @@ static func run_expedition_simulation(region_id: String, golem: Dictionary, rng:
             loot["weight"] = unit_weight * int(loot["count"])
     return {
         "ok": true, "region_id": region_id, "region_name": region["name"], "golem_name": golem["name"],
-        "logs": ["遠征調査完了", "総受傷度: %d%%" % int(damage["total_damage"])],
+        "events": _structured_events(damage, final_status, selected_loots.size()),
         "total_damage": int(damage["total_damage"]), "loots": selected_loots, "status": final_status,
     }

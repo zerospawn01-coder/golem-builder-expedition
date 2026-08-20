@@ -41,7 +41,8 @@ PHASE E1                FROZEN / PASS
 PHASE E2                REVIEW COMPLETE / FAIL
 E2-VIEW-02              WON'T FIX / DESIGN DIVERGENCE
 MACHINE RUN             EXISTENCE + SUCCESS VERIFIED
-LOG CONTENT (10353)     LOCALLY VERIFIED / NOT INDEPENDENTLY VERIFIED
+LOG CONTENT (10353)     DIRECTLY VERIFIED IN POST-PUSH CI LOG
+PUBLIC ANONYMOUS LOG    LOGIN-GATED / NOT EXTERNALLY REPRODUCED
 PR #3                   OPEN / DRAFT
 MAIN MERGE              HOLD
 ```
@@ -81,8 +82,10 @@ Headless regression     GODOT-PORT: PASS — 10353 checks
 
 The regression includes E1-DATA-06: two builds from the same fixed canonical snapshot must be Variant-equal and JSON-equal, and the source snapshot must remain unchanged.
 
-The PR #3 primary run log was also read directly from GitHub Actions job `96309545131`. It records the same engine identity, successful project import, and `GODOT-PORT: PASS — 10353 checks` at `2026-08-20T04:01:17Z`:
+The post-push PR #3 primary run log was read directly from GitHub Actions job `96395679491`. It records the same engine identity, successful project import, and `GODOT-PORT: PASS — 10353 checks` at `2026-08-20T10:32:52Z`:
 
-<https://github.com/zerospawn01-coder/golem-builder-expedition/actions/runs/32330313723/job/96309545131>
+<https://github.com/zerospawn01-coder/golem-builder-expedition/actions/runs/32359444629/job/96395679491>
 
-The E2 REVIEW verdict is complete and failed on E2-VIEW-02. Successful machine evidence does not override the visual gate and does not release `MAIN MERGE`. The next permitted decision point is either independent verification of the login-gated GitHub log or an explicit E3 start decision.
+This is an execution environment independent of the local Windows verification. Anonymous third-party access to the log body remains login-gated; that access limitation does not change the directly observed CI content.
+
+The E2 REVIEW verdict is complete and failed on E2-VIEW-02. Successful machine evidence does not override the visual gate and does not release `MAIN MERGE`. The next permitted decision point is an explicit E3 start decision or an explicit start of `GOLEM-EXPEDITION-LIVE-LOOP-01`.

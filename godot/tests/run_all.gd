@@ -5,6 +5,7 @@ const Fabrication = preload("res://domain/fabrication.gd")
 const BlueprintLibrary = preload("res://domain/blueprint_library.gd")
 const ExpeditionPresenter = preload("res://presentation/expedition_presenter.gd")
 const D2Vectors = preload("res://tests/live_loop_d2_vectors.gd")
+const LiveLoop = preload("res://domain/expedition_live_loop.gd")
 
 var failures: Array[String] = []
 var checks := 0
@@ -16,6 +17,7 @@ func _init() -> void:
     _test_presentation_determinism()
     _test_live_loop_d2_vectors()
     _test_live_loop_d2_migration_vectors()
+    _test_live_loop_step_evaluator()
     if failures.is_empty():
         print("GODOT-PORT: PASS — %d checks" % checks)
         quit(0)
@@ -223,3 +225,25 @@ func _test_live_loop_d2_migration_vectors() -> void:
         ids[String(migration_case.get("case_id", ""))] = true
     for required in ["legacy-v2-ready", "v3-decision-resume", "v3-in-progress-recover", "v3-returned-pending-cargo", "v3-destroyed-no-cargo"]:
         _check(ids.has(required), "D2-MIGRATION missing %s" % required)
+
+func _test_live_loop_step_evaluator() -> void:
+    var vectors := D2Vectors.build_all()
+    for vector in vectors:
+        var input: Dictionary = vector["input"]
+        var golem := Catalog.make_golem(String(input["frame_id"]), String(input["reactor_id"]), String(input["control_sigil_id"]), "d3-unit", 0, false)
+        golem["durability"] = int(input["starting_durability"])
+        var evaluation := Catalog.evaluate_expedition_damage(String(input["region_id"]), golem)
+        if not bool(vector["legacy"]["has_access_key"]):
+            _check(LiveLoop.build_damage_plan(evaluation, int(input["starting_durability"])).get("error", "") == "ACCESS_BLOCKED", "D3-STEP blocked vector %s" % vector["vector_id"])
+            continue
+        var plan := LiveLoop.build_damage_plan(evaluation, int(input["starting_durability"]))
+        _check(plan.get("ok", false), "D3-STEP plan %s" % vector["vector_id"])
+        _check(plan.get("components", []) == vector["legacy"]["components"] and plan.get("prefixes", []) == vector["legacy"]["prefixes"], "D3-STEP component/prefix %s" % vector["vector_id"])
+        var expected_steps: Array = vector["steps"]
+        for i in range(expected_steps.size()):
+            var projection := LiveLoop.project_step(plan, i)
+            var expected: Dictionary = expected_steps[i]
+            if bool(expected["reachable"]):
+                _check(projection.get("ok", false) and String(projection["step_id"]) == String(expected["step_id"]) and int(projection["step_damage"]) == int(expected["step_damage"]) and int(projection["prefix_before"]) == int(expected["prefix_before"]) and int(projection["prefix_after"]) == int(expected["prefix_after"]) and int(projection["durability_before"]) == int(expected["durability_before"]) and int(projection["durability_after"]) == int(expected["durability_after"]) and bool(projection["destroys"]) == bool(expected["destroys"]), "D3-STEP projection %s/%s" % [vector["vector_id"], expected["step_id"]])
+            else:
+                _check(projection.get("error", "") == "STEP_UNREACHABLE", "D3-STEP unreachable %s/%s" % [vector["vector_id"], expected["step_id"]])

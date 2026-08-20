@@ -23,6 +23,9 @@ func _init() -> void:
     _test_live_loop_return_is_exactly_once()
     _test_live_loop_transaction_validation_fails_closed()
     _test_live_loop_recovery_after_intent_crash()
+    _test_live_loop_atomic_replacement_crashes()
+    _test_live_loop_invalid_runtime_fails_closed()
+    _test_live_loop_d2_migrations_execute()
     if failures.is_empty():
         print("GODOT-PORT: PASS — %d checks" % checks)
         quit(0)
@@ -374,7 +377,7 @@ func _test_live_loop_recovery_after_intent_crash() -> void:
             DirAccess.remove_absolute("%s%s" % [absolute, suffix])
     if FileAccess.file_exists(survived_absolute):
         DirAccess.remove_absolute(survived_absolute)
-    var args := PackedStringArray(["--headless", "--path", ProjectSettings.globalize_path("res://"), "--script", "res://tests/live_loop_d3_crash_probe.gd", "--", path, survived_path])
+    var args := PackedStringArray(["--headless", "--path", ProjectSettings.globalize_path("res://"), "--script", "res://tests/live_loop_d3_crash_probe.gd", "--", "intent", path, survived_path])
     var output: Array = []
     var exit_code := OS.execute(OS.get_executable_path(), args, output, true)
     _check(exit_code != 4 and not FileAccess.file_exists(survived_absolute), "D3.3-CRASH child cannot execute after forced termination")
@@ -393,3 +396,63 @@ func _test_live_loop_recovery_after_intent_crash() -> void:
             DirAccess.remove_absolute("%s%s" % [absolute, suffix])
     if FileAccess.file_exists(survived_absolute):
         DirAccess.remove_absolute(survived_absolute)
+
+func _test_live_loop_atomic_replacement_crashes() -> void:
+    for stage in ["AFTER_TEMP_FLUSH", "AFTER_BACKUP_RENAME", "AFTER_COMMIT_RENAME"]:
+        var path := "user://live-loop-d3-replace-%s.json" % String(stage).to_lower()
+        var absolute := ProjectSettings.globalize_path(path)
+        var survived_path := "%s.survived" % path
+        var survived_absolute := ProjectSettings.globalize_path(survived_path)
+        for target in [absolute, "%s.bak" % absolute, "%s.tmp" % absolute, survived_absolute]:
+            if FileAccess.file_exists(target):
+                DirAccess.remove_absolute(target)
+        var args := PackedStringArray(["--headless", "--path", ProjectSettings.globalize_path("res://"), "--script", "res://tests/live_loop_d3_crash_probe.gd", "--", "replace", path, survived_path, stage])
+        var output: Array = []
+        var exit_code := OS.execute(OS.get_executable_path(), args, output, true)
+        _check(exit_code != 4 and not FileAccess.file_exists(survived_absolute), "D3.3-REPLACE forced stop %s" % stage)
+        var loaded := LiveLoopStore._read_valid(path)
+        _check(loaded.get("ok", false), "D3.3-REPLACE valid checkpoint survives %s" % stage)
+        var expedition_id := String(loaded.get("state", {}).get("runtime", {}).get("expedition_id", ""))
+        var expected := "replacement" if stage == "AFTER_COMMIT_RENAME" else "baseline"
+        _check(expedition_id == expected, "D3.3-REPLACE correct durable generation %s" % stage)
+        if stage != "AFTER_TEMP_FLUSH":
+            _check(FileAccess.file_exists("%s.bak" % absolute), "D3.3-REPLACE prior checkpoint retained %s" % stage)
+        for target in [absolute, "%s.bak" % absolute, "%s.tmp" % absolute, survived_absolute]:
+            if FileAccess.file_exists(target):
+                DirAccess.remove_absolute(target)
+
+func _test_live_loop_invalid_runtime_fails_closed() -> void:
+    var path := "user://live-loop-d3-invalid.json"
+    var absolute := ProjectSettings.globalize_path(path)
+    var invalid_states := [
+        {"unit": {}, "runtime": {"phase": "UNKNOWN"}},
+        {"unit": {"id": "unit-1"}, "runtime": {"phase": "DECISION", "expedition_id": "exp-1", "unit_id": "unit-1"}},
+        {"unit": {"id": "unit-other"}, "runtime": {"phase": "RETURNED", "expedition_id": "exp-1", "unit_id": "unit-1"}},
+        {"unit": {"id": "unit-1", "durability": 0}, "runtime": {"phase": "IN_PROGRESS", "expedition_id": "exp-1", "unit_id": "unit-1"}},
+        {"unit": {"id": "unit-1", "durability": 1}, "runtime": {"phase": "DESTROYED", "expedition_id": "exp-1", "unit_id": "unit-1", "pending_cargo": []}},
+        {"unit": {"id": "unit-1", "durability": 0}, "runtime": {"phase": "DESTROYED", "expedition_id": "exp-1", "unit_id": "unit-1", "pending_cargo": [{"item_id": "forbidden"}]}},
+    ]
+    for i in range(invalid_states.size()):
+        var file := FileAccess.open(path, FileAccess.WRITE)
+        file.store_string(JSON.stringify({"schema": LiveLoopStore.SCHEMA, "state": invalid_states[i]}))
+        file.flush()
+        file = null
+        var loaded := LiveLoopStore.load_and_recover(path)
+        _check(not loaded.get("ok", true), "D3.3-INVALID state %d fails closed" % i)
+    var malformed := FileAccess.open(path, FileAccess.WRITE)
+    malformed.store_string("{not-json")
+    malformed.flush()
+    malformed = null
+    _check(LiveLoopStore.load_and_recover(path).get("error", "") == "NO_VALID_RUNTIME", "D3.3-INVALID malformed JSON fails closed")
+    if FileAccess.file_exists(absolute):
+        DirAccess.remove_absolute(absolute)
+
+func _test_live_loop_d2_migrations_execute() -> void:
+    var file := FileAccess.open("res://tests/fixtures/live_loop_d2_migration_vectors.json", FileAccess.READ)
+    var fixture: Dictionary = JSON.parse_string(file.get_as_text())
+    for migration_case in fixture["cases"]:
+        var result := LiveLoopStore.migrate_save(migration_case["input"])
+        _check(result.get("ok", false), "D3.3-MIGRATION applies %s" % migration_case["case_id"])
+        for key in migration_case["expected"]:
+            _check(result.get(key, null) == migration_case["expected"][key], "D3.3-MIGRATION %s/%s" % [migration_case["case_id"], key])
+    _check(LiveLoopStore.migrate_save({"save_version": 1}).get("error", "") == "SAVE_VERSION_UNSUPPORTED", "D3.3-MIGRATION unsupported version fails closed")

@@ -5,8 +5,20 @@ const Store = preload("res://state/expedition_live_loop_store.gd")
 
 func _init() -> void:
     var args := OS.get_cmdline_user_args()
-    if args.size() != 2:
+    if args.size() < 3:
         quit(2)
+        return
+    if args[0] == "replace":
+        var baseline := {"schema": Store.SCHEMA, "state": {"unit": {"id": "unit-baseline", "durability": 90}, "runtime": {"phase": "DECISION", "expedition_id": "baseline", "decision_id": "decision-baseline", "unit_id": "unit-baseline"}}}
+        var replacement := {"schema": Store.SCHEMA, "state": {"unit": {"id": "unit-replacement", "durability": 80}, "runtime": {"phase": "DECISION", "expedition_id": "replacement", "decision_id": "decision-replacement", "unit_id": "unit-replacement"}}}
+        if not Store._write_atomic(args[1], baseline).get("ok", false):
+            quit(3)
+            return
+        Store._write_atomic_test_crash(args[1], replacement, args[3])
+        var replace_survived := FileAccess.open(args[2], FileAccess.WRITE)
+        if replace_survived != null:
+            replace_survived.store_string("replacement did not terminate")
+        quit(4)
         return
     var plan := LiveLoop.build_damage_plan({"ok": true, "status": "SUCCESS", "failure_stage": "", "resist_damage": 12, "mobility_damage": 8, "encounter_damage": 5, "total_damage": 25}, 100)
     var state := {
@@ -15,12 +27,12 @@ func _init() -> void:
         "inventory": {"crystal": 7}, "events": [], "telemetry": [],
     }
     var command := {"type": "CONTINUE", "expedition_id": "expedition-crash", "decision_id": "decision-1", "command_id": "command-crash", "next_decision_id": "decision-2"}
-    var persisted := Store.persist_continue_intent(args[0], state, command)
+    var persisted := Store.persist_continue_intent(args[1], state, command)
     if not persisted.get("ok", false):
         quit(3)
         return
     OS.kill(OS.get_process_id())
-    var survived := FileAccess.open(args[1], FileAccess.WRITE)
+    var survived := FileAccess.open(args[2], FileAccess.WRITE)
     if survived != null:
         survived.store_string("kill returned")
         survived.flush()

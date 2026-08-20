@@ -21,6 +21,9 @@ static func load_and_recover(path: String) -> Dictionary:
     if not loaded.get("ok", false):
         return loaded
     var state: Dictionary = loaded["state"]
+    var validation := _validate_state(state)
+    if not validation.get("ok", false):
+        return validation
     var runtime: Dictionary = state.get("runtime", {})
     if String(runtime.get("phase", "")) != "IN_PROGRESS":
         return {"ok": true, "recovered": false, "state": state}
@@ -47,13 +50,64 @@ static func _read_valid(path: String) -> Dictionary:
         var file := FileAccess.open(candidate, FileAccess.READ)
         if file == null:
             continue
-        var parsed: Variant = JSON.parse_string(file.get_as_text())
+        var parser := JSON.new()
+        if parser.parse(file.get_as_text()) != OK:
+            continue
+        var parsed: Variant = parser.data
         if typeof(parsed) != TYPE_DICTIONARY or String(parsed.get("schema", "")) != SCHEMA or typeof(parsed.get("state", null)) != TYPE_DICTIONARY:
             continue
         return {"ok": true, "state": parsed["state"].duplicate(true), "source": candidate}
     return {"ok": false, "error": "NO_VALID_RUNTIME"}
 
-static func _write_atomic(path: String, payload: Dictionary) -> Dictionary:
+static func migrate_save(payload: Dictionary) -> Dictionary:
+    var version := int(payload.get("save_version", -1))
+    if version == 2 and payload.get("expedition_runtime", null) == null:
+        return {"ok": true, "phase": "READY", "active_runtime": false, "inventory_delta": 0, "telemetry_delta": 0}
+    if version != 3:
+        return {"ok": false, "error": "SAVE_VERSION_UNSUPPORTED"}
+    var phase := String(payload.get("phase", ""))
+    if not ["DECISION", "IN_PROGRESS", "RETURNED", "DESTROYED"].has(phase):
+        return {"ok": false, "error": "PHASE_INVALID"}
+    var expedition_id := String(payload.get("expedition_id", ""))
+    if expedition_id.is_empty():
+        return {"ok": false, "error": "EXPEDITION_ID_REQUIRED"}
+    if phase == "DECISION":
+        var decision_id := String(payload.get("decision_id", ""))
+        if decision_id.is_empty():
+            return {"ok": false, "error": "DECISION_ID_REQUIRED"}
+        return {"ok": true, "phase": phase, "expedition_id": expedition_id, "decision_id": decision_id, "decision_sequence": int(payload.get("decision_sequence", 0)), "damage_applications": 0, "cargo_applications": 0, "telemetry_delta": 0}
+    if phase == "IN_PROGRESS":
+        var command_id := String(payload.get("command_id", ""))
+        if command_id.is_empty():
+            return {"ok": false, "error": "COMMAND_ID_REQUIRED"}
+        return {"ok": true, "recovery_count": 1, "command_id": command_id, "checkpoint_prefix_damage": int(payload.get("checkpoint_prefix_damage", 0)), "duplicate_damage": 0, "duplicate_cargo": 0, "duplicate_telemetry": 0}
+    if phase == "RETURNED":
+        return {"ok": true, "phase": phase, "expedition_id": expedition_id, "owned_inventory_delta_before_claim": 0, "pending_cargo_ids": payload.get("pending_cargo_ids", []).duplicate(true)}
+    return {"ok": true, "phase": phase, "expedition_id": expedition_id, "unit_retained": true, "unit_durability": int(payload.get("unit_durability", 0)), "owned_inventory_delta": 0, "blueprint_delta": 0}
+
+static func _validate_state(state: Dictionary) -> Dictionary:
+    if typeof(state.get("runtime", null)) != TYPE_DICTIONARY or typeof(state.get("unit", null)) != TYPE_DICTIONARY:
+        return {"ok": false, "error": "RUNTIME_STATE_INVALID"}
+    var runtime: Dictionary = state["runtime"]
+    var phase := String(runtime.get("phase", ""))
+    if not ["DECISION", "IN_PROGRESS", "RETURNED", "DESTROYED"].has(phase):
+        return {"ok": false, "error": "RUNTIME_PHASE_INVALID"}
+    if String(runtime.get("expedition_id", "")).is_empty() or String(runtime.get("unit_id", "")).is_empty():
+        return {"ok": false, "error": "RUNTIME_ID_INVALID"}
+    if String(state["unit"].get("id", "")) != String(runtime["unit_id"]):
+        return {"ok": false, "error": "RUNTIME_UNIT_LOCK_INVALID"}
+    if phase == "DECISION" and String(runtime.get("decision_id", "")).is_empty():
+        return {"ok": false, "error": "RUNTIME_DECISION_INVALID"}
+    if phase == "IN_PROGRESS" and (typeof(runtime.get("pending_command", null)) != TYPE_DICTIONARY or typeof(runtime.get("pre_command_checkpoint", null)) != TYPE_DICTIONARY):
+        return {"ok": false, "error": "RUNTIME_INTENT_INVALID"}
+    if phase == "DESTROYED" and (int(state["unit"].get("durability", -1)) != 0 or not runtime.get("pending_cargo", []).is_empty()):
+        return {"ok": false, "error": "RUNTIME_DESTROYED_INVALID"}
+    return {"ok": true}
+
+static func _write_atomic_test_crash(path: String, payload: Dictionary, crash_stage: String) -> Dictionary:
+    return _write_atomic(path, payload, crash_stage)
+
+static func _write_atomic(path: String, payload: Dictionary, crash_stage: String = "") -> Dictionary:
     var absolute := ProjectSettings.globalize_path(path)
     var temporary := "%s.tmp" % absolute
     var backup := "%s.bak" % absolute
@@ -63,13 +117,20 @@ static func _write_atomic(path: String, payload: Dictionary) -> Dictionary:
     file.store_string(JSON.stringify(payload))
     file.flush()
     file = null
+    _crash_if_requested(crash_stage, "AFTER_TEMP_FLUSH")
     if FileAccess.file_exists(backup):
         DirAccess.remove_absolute(backup)
     if FileAccess.file_exists(absolute):
         if DirAccess.rename_absolute(absolute, backup) != OK:
             return {"ok": false, "error": "BACKUP_RENAME_FAILED"}
+    _crash_if_requested(crash_stage, "AFTER_BACKUP_RENAME")
     if DirAccess.rename_absolute(temporary, absolute) != OK:
         if FileAccess.file_exists(backup):
             DirAccess.rename_absolute(backup, absolute)
         return {"ok": false, "error": "COMMIT_RENAME_FAILED"}
+    _crash_if_requested(crash_stage, "AFTER_COMMIT_RENAME")
     return {"ok": true}
+
+static func _crash_if_requested(requested: String, current: String) -> void:
+    if requested == current:
+        OS.kill(OS.get_process_id())

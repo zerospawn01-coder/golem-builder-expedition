@@ -245,7 +245,7 @@ func _fabricate() -> void:
     _refresh()
 
 func _expedition() -> void:
-    _heading("EXPEDITION — PHASE E1 / PC PROVISIONAL")
+    _heading("EXPEDITION — PHASE E2 / PC HIERARCHY")
     var row := HBoxContainer.new()
     var region_ids: Array = []
     var region_catalog := {}

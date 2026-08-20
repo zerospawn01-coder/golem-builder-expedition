@@ -18,6 +18,7 @@ func _init() -> void:
     _test_live_loop_d2_vectors()
     _test_live_loop_d2_migration_vectors()
     _test_live_loop_step_evaluator()
+    _test_live_loop_duplicate_continue_is_exactly_once()
     if failures.is_empty():
         print("GODOT-PORT: PASS — %d checks" % checks)
         quit(0)
@@ -247,3 +248,35 @@ func _test_live_loop_step_evaluator() -> void:
                 _check(projection.get("ok", false) and String(projection["step_id"]) == String(expected["step_id"]) and int(projection["step_damage"]) == int(expected["step_damage"]) and int(projection["prefix_before"]) == int(expected["prefix_before"]) and int(projection["prefix_after"]) == int(expected["prefix_after"]) and int(projection["durability_before"]) == int(expected["durability_before"]) and int(projection["durability_after"]) == int(expected["durability_after"]) and bool(projection["destroys"]) == bool(expected["destroys"]), "D3-STEP projection %s/%s" % [vector["vector_id"], expected["step_id"]])
             else:
                 _check(projection.get("error", "") == "STEP_UNREACHABLE", "D3-STEP unreachable %s/%s" % [vector["vector_id"], expected["step_id"]])
+
+func _test_live_loop_duplicate_continue_is_exactly_once() -> void:
+    var state := {
+        "unit": {"id": "unit-1", "durability": 100},
+        "runtime": {
+            "phase": "DECISION",
+            "expedition_id": "expedition-1",
+            "decision_id": "decision-1",
+            "unit_id": "unit-1",
+            "next_step_index": 0,
+            "durability": 100,
+            "pending_cargo": [],
+            "step_results": [],
+            "command_results": {},
+        },
+        "inventory": {"crystal": 7},
+        "events": [],
+        "telemetry": [],
+    }
+    var command := {"type": "CONTINUE", "expedition_id": "expedition-1", "decision_id": "decision-1", "command_id": "command-1", "next_decision_id": "decision-2"}
+    var projection := {"ok": true, "step_index": 0, "step_id": "ENTRY", "step_damage": 12, "durability_before": 100, "durability_after": 88, "destroys": false, "terminal_status": "DECISION", "cargo_delta": [{"item_id": "cargo-1", "kind": "crystal", "count": 1}]}
+    var first := LiveLoop.apply_continue(state, command, projection)
+    _check(first.get("ok", false) and not first.get("duplicate", true), "D3.2-IDEM first CONTINUE applies")
+    var committed: Dictionary = first.get("state", {})
+    var before_duplicate := committed.duplicate(true)
+    var second := LiveLoop.apply_continue(committed, command, projection)
+    _check(second.get("ok", false) and second.get("duplicate", false), "D3.2-IDEM duplicate CONTINUE returns recorded result")
+    _check(second.get("result", {}) == first.get("result", {}), "D3.2-IDEM duplicate returns exact recorded result")
+    _check(second.get("state", {}) == before_duplicate, "D3.2-IDEM duplicate leaves complete state unchanged")
+    _check(int(second["state"]["unit"]["durability"]) == 88 and second["state"]["runtime"]["pending_cargo"].size() == 1, "D3.2-IDEM damage and cargo applied exactly once")
+    _check(second["state"]["events"].size() == 2 and second["state"]["telemetry"].is_empty(), "D3.2-IDEM events and telemetry not duplicated")
+    _check(second["state"]["inventory"] == state["inventory"], "D3.2-IDEM pending cargo never mutates inventory")

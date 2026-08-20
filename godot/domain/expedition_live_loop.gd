@@ -64,3 +64,71 @@ static func project_step(plan: Dictionary, step_index: int) -> Dictionary:
     output["step_index"] = step_index
     output["terminal_status"] = "DESTROYED" if bool(step["destroys"]) else ("RETURNED" if String(step["step_id"]) == "RECOVERY" else "DECISION")
     return output
+
+static func apply_continue(state: Dictionary, command: Dictionary, projection: Dictionary) -> Dictionary:
+    var next := state.duplicate(true)
+    var runtime: Dictionary = next.get("runtime", {})
+    var command_id := String(command.get("command_id", ""))
+    var recorded: Dictionary = runtime.get("command_results", {})
+    if not command_id.is_empty() and recorded.has(command_id):
+        return {"ok": true, "duplicate": true, "state": next, "result": recorded[command_id].duplicate(true)}
+    if command_id.is_empty():
+        return {"ok": false, "error": "COMMAND_ID_REQUIRED", "state": next}
+    if String(runtime.get("phase", "")) != "DECISION":
+        return {"ok": false, "error": "PHASE_INVALID", "state": next}
+    if String(command.get("expedition_id", "")) != String(runtime.get("expedition_id", "")):
+        return {"ok": false, "error": "EXPEDITION_ID_MISMATCH", "state": next}
+    if String(command.get("decision_id", "")) != String(runtime.get("decision_id", "")):
+        return {"ok": false, "error": "DECISION_ID_MISMATCH", "state": next}
+    if not projection.get("ok", false) or int(projection.get("step_index", -1)) != int(runtime.get("next_step_index", -1)):
+        return {"ok": false, "error": "STEP_PROJECTION_INVALID", "state": next}
+
+    var unit: Dictionary = next.get("unit", {})
+    if String(unit.get("id", "")) != String(runtime.get("unit_id", "")):
+        return {"ok": false, "error": "UNIT_LOCK_MISMATCH", "state": next}
+    var checkpoint := next.duplicate(true)
+    runtime["phase"] = "IN_PROGRESS"
+    runtime["pending_command"] = command.duplicate(true)
+    runtime["pre_command_checkpoint"] = checkpoint
+
+    var cargo_delta: Array = projection.get("cargo_delta", []).duplicate(true)
+    var pending_cargo: Array = runtime.get("pending_cargo", []).duplicate(true)
+    pending_cargo.append_array(cargo_delta)
+    runtime["pending_cargo"] = pending_cargo
+    var durability_after := int(projection.get("durability_after", unit.get("durability", 0)))
+    unit["durability"] = durability_after
+    runtime["durability"] = durability_after
+
+    var step_result := projection.duplicate(true)
+    step_result["command_id"] = command_id
+    step_result["expedition_id"] = String(runtime["expedition_id"])
+    step_result["decision_id"] = String(runtime["decision_id"])
+    var step_results: Array = runtime.get("step_results", []).duplicate(true)
+    step_results.append(step_result)
+    runtime["step_results"] = step_results
+    var events: Array = next.get("events", []).duplicate(true)
+    events.append({"type": "continue_selected", "command_id": command_id, "expedition_id": runtime["expedition_id"], "decision_id": runtime["decision_id"]})
+    events.append({"type": "step_resolved", "command_id": command_id, "expedition_id": runtime["expedition_id"], "step_id": projection["step_id"]})
+    next["events"] = events
+
+    var terminal := String(projection.get("terminal_status", "DECISION"))
+    if terminal == "DESTROYED":
+        runtime["pending_cargo"] = []
+        runtime["phase"] = "DESTROYED"
+    elif terminal == "RETURNED":
+        runtime["phase"] = "RETURNED"
+    else:
+        runtime["phase"] = "DECISION"
+        runtime["next_step_index"] = int(runtime["next_step_index"]) + 1
+        runtime["decision_id"] = String(command.get("next_decision_id", ""))
+        if String(runtime["decision_id"]).is_empty():
+            return {"ok": false, "error": "NEXT_DECISION_ID_REQUIRED", "state": state.duplicate(true)}
+
+    runtime.erase("pending_command")
+    runtime.erase("pre_command_checkpoint")
+    var result := {"phase": runtime["phase"], "step_result": step_result.duplicate(true)}
+    recorded[command_id] = result.duplicate(true)
+    runtime["command_results"] = recorded
+    next["runtime"] = runtime
+    next["unit"] = unit
+    return {"ok": true, "duplicate": false, "state": next, "result": result}

@@ -21,6 +21,7 @@ var blueprint_library: Dictionary = {}
 var blueprint_telemetry: Array = []
 var unit_blueprint_sources: Dictionary = {}
 var active_save_opportunity: Dictionary = {}
+var expedition_runtime: Dictionary = {}
 
 func _ready() -> void:
     if not _load_state():
@@ -46,6 +47,7 @@ func reset_state(save_after := true) -> void:
     blueprint_telemetry = []
     unit_blueprint_sources = {}
     active_save_opportunity = {}
+    expedition_runtime = {}
     if save_after:
         _save_state()
     state_changed.emit()
@@ -96,6 +98,7 @@ func _load_state() -> bool:
     blueprint_telemetry = payload.get("blueprint_telemetry", []).duplicate(true)
     unit_blueprint_sources = payload.get("unit_blueprint_sources", {}).duplicate(true)
     active_save_opportunity = {}
+    expedition_runtime = {}
     return not golems.is_empty()
 
 func _commit_change() -> void:
@@ -111,6 +114,16 @@ func get_golem(golem_id: String) -> Dictionary:
 func get_active_golem() -> Dictionary:
     var found := get_golem(active_golem_id)
     return found if not found.is_empty() else (golems[0] if not golems.is_empty() else {})
+
+func get_presentation_snapshot() -> Dictionary:
+    return {
+        "day": day,
+        "actions_left": actions_left,
+        "inventory": inventory.duplicate(true),
+        "golems": golems.duplicate(true),
+        "active_golem_id": active_golem_id,
+        "expedition_runtime": expedition_runtime.duplicate(true),
+    }
 
 func register_traits(traits: Array) -> void:
     for trait in traits:
@@ -266,6 +279,8 @@ func start_expedition(golem_id: String, region_id: String, seed := -1) -> Dictio
         return {"ok": false, "error": "GOLEM_NOT_FOUND"}
     if actions_left <= 0:
         return {"ok": false, "error": "NO_ACTION"}
+    if has_pending_cargo():
+        return {"ok": false, "error": "PENDING_CARGO"}
     var prediction := Catalog.predict_expedition(region_id, golem)
     if prediction.get("status", "") == "BLOCKED":
         return {"ok": false, "error": "ACCESS_BLOCKED"}
@@ -289,6 +304,9 @@ func start_expedition(golem_id: String, region_id: String, seed := -1) -> Dictio
     var report := Catalog.run_expedition_simulation(region_id, golem, rng)
     if not report.get("ok", false):
         return report
+    var structured_report: Dictionary = report.duplicate(true)
+    structured_report.erase("logs")
+    structured_report["events"] = _build_expedition_events(prediction, report)
     actions_left -= 1
     blueprint_telemetry = next_events
     for i in range(golems.size()):
@@ -296,8 +314,97 @@ func start_expedition(golem_id: String, region_id: String, seed := -1) -> Dictio
             golems[i]["durability"] = max(0, int(golems[i].get("durability", 100)) - int(report["total_damage"]))
             golems[i]["expeditions_count"] = int(golems[i].get("expeditions_count", 0)) + 1
             break
+    expedition_runtime = {
+        "golem_id": golem_id,
+        "region_id": region_id,
+        "report": structured_report,
+        "cargo_capacity": int(golem["stats"]["work"]) * 2,
+        "selected_loot_indexes": [],
+        "loot_claimed": structured_report.get("loots", []).is_empty() or String(structured_report.get("status", "FAILED")) == "FAILED",
+    }
     _commit_change()
-    return {"ok": true, "report": report, "cargo_capacity": int(golem["stats"]["work"]) * 2}
+    return {"ok": true, "report": structured_report, "cargo_capacity": expedition_runtime["cargo_capacity"]}
+
+func _build_expedition_events(damage: Dictionary, report: Dictionary) -> Array:
+    var events: Array = []
+    events.append({"step": 1, "type": "entry", "damage": int(damage.get("resist_damage", 0)), "has_resist_key": bool(damage.get("has_resist_key", false))})
+    if String(damage.get("failure_stage", "")) == "entry":
+        events.append({"step": 2, "type": "result", "status": "FAILED", "total_damage": int(report.get("total_damage", 0))})
+        return events
+    events.append({"step": 2, "type": "hazard", "damage": int(damage.get("mobility_damage", 0))})
+    if String(damage.get("failure_stage", "")) == "mobility":
+        events.append({"step": 3, "type": "result", "status": "FAILED", "total_damage": int(report.get("total_damage", 0))})
+        return events
+    events.append({"step": 3, "type": "encounter", "damage": int(damage.get("encounter_damage", 0))})
+    if String(damage.get("failure_stage", "")) == "encounter":
+        events.append({"step": 4, "type": "result", "status": "FAILED", "total_damage": int(report.get("total_damage", 0))})
+        return events
+    events.append({"step": 4, "type": "loot", "item_count": report.get("loots", []).size()})
+    events.append({"step": 5, "type": "result", "status": String(report.get("status", "UNKNOWN")), "total_damage": int(report.get("total_damage", 0))})
+    return events
+
+func has_pending_cargo() -> bool:
+    if expedition_runtime.is_empty() or bool(expedition_runtime.get("loot_claimed", true)):
+        return false
+    var report: Dictionary = expedition_runtime.get("report", {})
+    return not report.get("loots", []).is_empty()
+
+func expedition_selected_cargo_weight() -> int:
+    if expedition_runtime.is_empty():
+        return 0
+    var report: Dictionary = expedition_runtime.get("report", {})
+    var loots: Array = report.get("loots", [])
+    var total := 0
+    for value in expedition_runtime.get("selected_loot_indexes", []):
+        var index := int(value)
+        if index >= 0 and index < loots.size():
+            total += int((loots[index] as Dictionary).get("weight", 0))
+    return total
+
+func set_expedition_loot_selected(index: int, selected: bool) -> Dictionary:
+    if expedition_runtime.is_empty():
+        return {"ok": false, "error": "NO_EXPEDITION_RESULT"}
+    if bool(expedition_runtime.get("loot_claimed", true)):
+        return {"ok": false, "error": "CARGO_ALREADY_CLAIMED"}
+    var report: Dictionary = expedition_runtime.get("report", {})
+    var loots: Array = report.get("loots", [])
+    if index < 0 or index >= loots.size():
+        return {"ok": false, "error": "LOOT_INDEX_INVALID"}
+    var next: Array = expedition_runtime.get("selected_loot_indexes", []).duplicate(true)
+    if selected and not next.has(index):
+        next.append(index)
+    elif not selected:
+        next.erase(index)
+    var weight := 0
+    for value in next:
+        weight += int((loots[int(value)] as Dictionary).get("weight", 0))
+    if weight > int(expedition_runtime.get("cargo_capacity", 0)):
+        return {"ok": false, "error": "CARGO_CAPACITY_EXCEEDED"}
+    expedition_runtime["selected_loot_indexes"] = next
+    state_changed.emit()
+    return {"ok": true, "selected_weight": weight}
+
+func claim_expedition_cargo() -> Dictionary:
+    if expedition_runtime.is_empty():
+        return {"ok": false, "error": "NO_EXPEDITION_RESULT"}
+    if bool(expedition_runtime.get("loot_claimed", true)):
+        return {"ok": false, "error": "CARGO_ALREADY_CLAIMED"}
+    var report: Dictionary = expedition_runtime.get("report", {})
+    var loots: Array = report.get("loots", [])
+    var chosen: Array = []
+    for value in expedition_runtime.get("selected_loot_indexes", []):
+        var index := int(value)
+        if index >= 0 and index < loots.size():
+            chosen.append((loots[index] as Dictionary).duplicate(true))
+    for loot in chosen:
+        var category := String(loot.get("category", ""))
+        var item_id := String(loot.get("id", ""))
+        var count := int(loot.get("count", 0))
+        if inventory.has(category) and inventory[category].has(item_id):
+            inventory[category][item_id] = int(inventory[category][item_id]) + count
+    expedition_runtime["loot_claimed"] = true
+    _commit_change()
+    return {"ok": true, "claimed": chosen}
 
 func add_loot(loots: Array) -> void:
     for loot in loots:
